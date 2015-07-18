@@ -3,10 +3,11 @@
 # For simplicity, this Makefile is shared. Just choose/add a TARGET.
 
 # Name of source file to build, minus the .c
+TARGET = dcmotor_1way
 # TARGET = piezo
 # TARGET = voltmeter
 # TARGET = vacuum_switcher
-TARGET = echo
+# TARGET = echo
 # TARGET = servo_demo
 # TARGET = fade
 # TARGET = fade_timer0
