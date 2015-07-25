@@ -3,11 +3,12 @@
 # For simplicity, this Makefile is shared. Just choose/add a TARGET.
 
 # Name of source file to build, minus the .c
-TARGET = dcmotor_1way
+# TARGET = dcmotor_1way
 # TARGET = piezo
 # TARGET = voltmeter
 # TARGET = vacuum_switcher
 # TARGET = echo
+TARGET = echo_isr
 # TARGET = servo_demo
 # TARGET = fade
 # TARGET = fade_timer0
@@ -35,6 +36,9 @@ LIBDIR = ../usart
 # Set default programmer to use. Others are defined below (see flash_*) and
 # can be selected via command line args to make.
 PROGRAMMER_TYPE = usbtiny
+
+# Flag for whether compile target is an arduino nano
+NANO = 0
 
 # extra arguments to avrdude: baud rate, chip type, -F flag, etc.
 PROGRAMMER_ARGS = 	
@@ -164,11 +168,15 @@ flash_109: PROGRAMMER_TYPE = avr109
 flash_109: PROGRAMMER_ARGS = -b 9600 -P /dev/ttyUSB0
 flash_109: flash
 
+# Adafruit Metro Mini works fine at BAUD setting 9600 or 19200
 uno: PROGRAMMER_TYPE = arduino
 uno: F_CPU = 16000000UL
+uno: BAUD = 19200
 uno: PROGRAMMER_ARGS = -b 115200 -P /dev/cu.usbserial-00001014
 uno: flash
 
+# Arduino Nano
+nano: NANO = 1
 nano: PROGRAMMER_TYPE = arduino
 nano: F_CPU = 16000000UL
 nano: PROGRAMMER_ARGS = -b 57600 -P /dev/cu.wchusbserial1410

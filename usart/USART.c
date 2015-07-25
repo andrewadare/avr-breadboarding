@@ -27,7 +27,7 @@ void initUSART(void)
 
 // Based on a tip from
 // http://www.javiervalcarce.eu/wiki/Program_Arduino_with_AVR-GCC
-#if PROGRAMMER_TYPE == arduino
+#if NANO == 1
   #undef UBRR_VALUE
   #define UBRR_VALUE (((F_CPU) + 4UL * (BAUD)) / (8UL * (BAUD)) - 1UL)
   #undef UBRRH_VALUE
