@@ -1,13 +1,13 @@
 
 /*
-  Quick and dirty functions that make serial communications work.
+  Functions for communication over USART serial line. Modified from
+  code by Elliot Williams.
 
-  Note that receiveByte() blocks -- it sits and waits _forever_ for
-   a byte to come in.  If you're doing anything that's more interesting,
-   you'll want to implement this with interrupts.
+  receiveByte() is simple to use, but blocks the CPU waiting for input. 
+  See echo_isr.c for a non-blocking example.
 
-   initUSART requires BAUDRATE to be defined in order to calculate
-     the bit-rate multiplier.  9600 is a reasonable default.
+  initUSART() requires BAUDRATE to be defined in order to calculate
+  the bit-rate multiplier.  9600 is a reasonable default.
 
   May not work with some of the older chips:
     Tiny2313, Mega8, Mega16, Mega32 have different pin macros
