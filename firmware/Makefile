@@ -3,6 +3,7 @@
 # For simplicity, this Makefile is shared. Just choose/add a TARGET.
 
 # Name of source file to build, minus the .c
+# TARGET = drive_A4988
 # TARGET = dcmotor_1way
 # TARGET = piezo
 # TARGET = voltmeter
@@ -30,7 +31,7 @@ MCU   = atmega328p
 F_CPU = 1000000UL
 BAUD  = 9600
 
-# Location of USART utilities and other commonly reused code
+# Location of USART utilities
 LIBDIR = ../usart
 
 # Set default programmer to use. Others are defined below (see flash_*) and
@@ -122,13 +123,13 @@ disasm: disassemble
 size:  $(TARGET).elf
 	$(AVRSIZE) -C --mcu=$(MCU) $(TARGET).elf
 
-clean:
+clean_target:
 	rm -f $(TARGET).elf $(TARGET).hex $(TARGET).obj \
 	$(TARGET).o $(TARGET).d $(TARGET).eep $(TARGET).lst \
 	$(TARGET).lss $(TARGET).sym $(TARGET).map $(TARGET)~ \
 	$(TARGET).eeprom
 
-squeaky_clean:
+clean:
 	rm -f *.elf *.hex *.obj *.o *.d *.eep *.lst *.lss *.sym *.map *~ *.eeprom
 
 ##########------------------------------------------------------##########
