@@ -26,7 +26,6 @@ static inline void init_timer1()
   TCCR1B |= (1 << CS10);
 
   // Use OCR1A (16 bits) to set counter TOP value so it resets every 1 ms.
-  TCCR1A |= (1 << COM1A1);
   OCR1A = 1000;
 
   // The timer 1 output compare interrupt enable (OCIE) bit is set conditionally 
