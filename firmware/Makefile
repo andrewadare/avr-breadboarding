@@ -8,6 +8,7 @@
 # TARGET = piezo
 # TARGET = voltmeter
 # TARGET = vacuum_switcher
+# TARGET = dual_vacuum_switcher
 # TARGET = echo
 TARGET = echo_isr
 # TARGET = servo_demo
@@ -23,13 +24,27 @@ TARGET = echo_isr
 # TARGET = button
 # TARGET = blink
 
+# Port addresses of various arduino devices
+# USBPORT = /dev/cu.usbmodem1451
+# USBPORT = /dev/cu.usbserial-00001014
+# USBPORT = /dev/cu.wchusbserial1410
+
+# MCU, F_CPU, and BAUD:
 # These can be overridden in user code with #define, but take care to place
 # them before entry into any headers that refer to them.
 # Note: BAUD is used for USART configuration. It has nothing to do with
 # the upload rate to built-in bootloaders on arduino boards.
 MCU   = atmega328p
-F_CPU = 1000000UL
-BAUD  = 9600
+
+# If using external 16 MHz crystal oscillator:
+# Fuse settings are (H:05, E:DE, L:FF)
+F_CPU = 16000000UL
+BAUD  = 19200
+
+# If using 328p w/ factory defaults (8 MHz internal oscillator, prescaled 1/8):
+# Fuse settings are (H:07, E:D9, L:62) or (H:00, E:DF, L:62)
+# F_CPU = 1000000UL
+# BAUD  = 9600
 
 # Location of USART utilities
 LIBDIR = ../usart
@@ -37,9 +52,6 @@ LIBDIR = ../usart
 # Set default programmer to use. Others are defined below (see flash_*) and
 # can be selected via command line args to make.
 PROGRAMMER_TYPE = usbtiny
-
-# Flag for whether compile target is an arduino nano
-NANO = 0
 
 # extra arguments to avrdude: baud rate, chip type, -F flag, etc.
 PROGRAMMER_ARGS = 	
@@ -169,18 +181,16 @@ flash_109: PROGRAMMER_TYPE = avr109
 flash_109: PROGRAMMER_ARGS = -b 9600 -P /dev/ttyUSB0
 flash_109: flash
 
-# Adafruit Metro Mini works fine at BAUD setting 9600 or 19200
+# Arduinos
 uno: PROGRAMMER_TYPE = arduino
 uno: F_CPU = 16000000UL
 uno: BAUD = 19200
-uno: PROGRAMMER_ARGS = -b 115200 -P /dev/cu.usbserial-00001014
+uno: PROGRAMMER_ARGS = -b 115200 -P $(USBPORT)
 uno: flash
 
-# Arduino Nano
-nano: NANO = 1
 nano: PROGRAMMER_TYPE = arduino
 nano: F_CPU = 16000000UL
-nano: PROGRAMMER_ARGS = -b 57600 -P /dev/cu.wchusbserial1410
+nano: PROGRAMMER_ARGS = -b 57600 -P $(USBPORT)
 nano: flash
 
 ##########------------------------------------------------------##########
