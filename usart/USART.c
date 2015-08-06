@@ -3,7 +3,7 @@
   Functions for communication over USART serial line. Modified from
   code by Elliot Williams.
 
-  receiveByte() is simple to use, but blocks the CPU waiting for input. 
+  receiveByte() is simple to use, but blocks the CPU waiting for input.
   See echo_isr.c for a non-blocking example.
 
   initUSART() requires BAUDRATE to be defined in order to calculate
@@ -21,13 +21,12 @@
 #include <util/setbaud.h>
 #include <math.h> // Only needed for printFloat(). See comments there.
 
-// Requires BAUD and PROGRAMMER_TYPE to be set
+// Requires BAUD and F_CPU to be set
 void initUSART(void)
 {
-
-// Based on a tip from
-// http://www.javiervalcarce.eu/wiki/Program_Arduino_with_AVR-GCC
-#if NANO == 1
+  // Based on a tip from
+  // http://www.javiervalcarce.eu/wiki/Program_Arduino_with_AVR-GCC
+#if PROGRAMMER_TYPE == arduino
   #undef UBRR_VALUE
   #define UBRR_VALUE (((F_CPU) + 4UL * (BAUD)) / (8UL * (BAUD)) - 1UL)
   #undef UBRRH_VALUE
@@ -39,7 +38,7 @@ void initUSART(void)
   UBRR0H = UBRRH_VALUE;
   UBRR0L = UBRRL_VALUE;
 
-// Doubles transfer rate if enabled
+  // Doubles transfer rate if enabled
 #if USE_2X
   UCSR0A |= (1 << U2X0);
 #else
@@ -51,6 +50,10 @@ void initUSART(void)
 
   // 8 data bits, 1 stop bit
   UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+
+  // Enable internal pull-up resistor on PD0 (RX) to suppress line noise
+  DDRD &= ~(1 << PIND0);
+  PORTD |= (1 << PIND0);
 }
 
 void transmitByte(uint8_t data)
