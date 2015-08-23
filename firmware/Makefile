@@ -3,6 +3,8 @@
 # For simplicity, this Makefile is shared. Just choose/add a TARGET.
 
 # Name of source file to build, minus the .c
+TARGET = quad_encoder
+# TARGET = SN754410
 # TARGET = drive_A4988
 # TARGET = dcmotor_1way
 # TARGET = piezo
@@ -10,7 +12,7 @@
 # TARGET = vacuum_switcher
 # TARGET = dual_vacuum_switcher
 # TARGET = echo
-TARGET = echo_isr
+# TARGET = echo_isr
 # TARGET = servo_demo
 # TARGET = fade
 # TARGET = fade_timer0
@@ -27,7 +29,7 @@ TARGET = echo_isr
 # Port addresses of various arduino devices
 # USBPORT = /dev/cu.usbmodem1451
 # USBPORT = /dev/cu.usbserial-00001014
-# USBPORT = /dev/cu.wchusbserial1410
+USBPORT = /dev/cu.wchusbserial1450
 
 # MCU, F_CPU, and BAUD:
 # These can be overridden in user code with #define, but take care to place
@@ -47,7 +49,7 @@ BAUD  = 19200
 # BAUD  = 9600
 
 # Location of USART utilities
-LIBDIR = ../usart
+LIBDIR = ../common
 
 # Set default programmer to use. Others are defined below (see flash_*) and
 # can be selected via command line args to make.
@@ -192,6 +194,7 @@ nano: PROGRAMMER_TYPE = arduino
 nano: F_CPU = 16000000UL
 nano: PROGRAMMER_ARGS = -b 57600 -P $(USBPORT)
 nano: flash
+nano: size
 
 ##########------------------------------------------------------##########
 ##########       Fuse settings and suitable defaults            ##########
