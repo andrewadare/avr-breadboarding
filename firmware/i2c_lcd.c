@@ -8,7 +8,7 @@
 #include <util/delay.h>
 #include <compat/twi.h>
 
-#define MAX_TRIES 50
+#define I2C_MAX_TRIES 50     // Connection attempts (0 < tries < 255)
 #define MCP23008_ID    0x40  // MCP23008 I2C Device Identifier (0100, fixed)
 #define MCP23008_ADDR  0x00  // MCP23008 I2C Address (000-111 in bits 3..1)
 #define IODIR 0x00           // MCP23008 I/O Direction Register
@@ -56,74 +56,75 @@ unsigned char i2c_transmit(unsigned char type)
 
 char i2c_start(unsigned int dev_id, unsigned int dev_addr, unsigned char rw_type)
 {
-  unsigned char n = 0;
   unsigned char twi_status;
-  char r_val = -1;
-i2c_retry:
-  if (n++ >= MAX_TRIES) return r_val;
-  // Transmit Start Condition
-  twi_status=i2c_transmit(I2C_START);
 
-  // Check the TWI Status
-  if (twi_status == TW_MT_ARB_LOST) goto i2c_retry;
-  if ((twi_status != TW_START) && (twi_status != TW_REP_START)) goto i2c_quit;
-  // Send slave address (SLA_W)
-  TWDR = (dev_id & 0xF0) | (dev_addr & 0x0E) | rw_type;
-  // Transmit I2C Data
-  twi_status=i2c_transmit(I2C_DATA);
-  // Check the TWSR status
-  if ((twi_status == TW_MT_SLA_NACK) || (twi_status == TW_MT_ARB_LOST)) goto i2c_retry;
-  if (twi_status != TW_MT_SLA_ACK) goto i2c_quit;
-  r_val=0;
-i2c_quit:
-  return r_val;
+  for (uint8_t n = 0; n < I2C_MAX_TRIES; n++)
+  {
+    // Transmit Start Condition
+    twi_status = i2c_transmit(I2C_START);
+
+    // Check TWI Status
+    if (twi_status == TW_MT_ARB_LOST)
+      continue;
+    if ((twi_status != TW_START) && (twi_status != TW_REP_START))
+      return -1;
+
+    // Send slave address (SLA_W)
+    TWDR = (dev_id & 0xF0) | (dev_addr & 0x0E) | rw_type;
+
+    // Transmit I2C Data
+    twi_status=i2c_transmit(I2C_DATA);
+
+    // Check the TWSR status
+    if ((twi_status == TW_MT_SLA_NACK) || (twi_status == TW_MT_ARB_LOST))
+      continue;
+    if (twi_status != TW_MT_SLA_ACK)
+      return -1;
+  }
+
+  return 0;
 }
 
 void i2c_stop(void)
 {
-  // unsigned char twi_status;
-  // Transmit I2C Data
-  // twi_status=i2c_transmit(I2C_STOP);
   i2c_transmit(I2C_STOP);
 }
 
 char i2c_write(char data)
 {
-  unsigned char twi_status;
-  char r_val = -1;
   // Send the Data to I2C Bus
   TWDR = data;
-  // Transmit I2C Data
-  twi_status=i2c_transmit(I2C_DATA);
-  // Check the TWSR status
-  if (twi_status != TW_MT_DATA_ACK) goto i2c_quit;
-  r_val=0;
-i2c_quit:
-  return r_val;
+
+  // Transmit I2C data and check TWSR status
+  if (i2c_transmit(I2C_DATA) != TW_MT_DATA_ACK)
+    return -1;
+
+  return 0;
 }
 
-char i2c_read(char *data,char ack_type)
+char i2c_read(char *data, char ack_type)
 {
   unsigned char twi_status;
-  char r_val = -1;
 
   if (ack_type)
   {
     // Read I2C Data and Send Acknowledge
-    twi_status=i2c_transmit(I2C_DATA_ACK);
-    if (twi_status != TW_MR_DATA_ACK) goto i2c_quit;
+    twi_status = i2c_transmit(I2C_DATA_ACK);
+    if (twi_status != TW_MR_DATA_ACK)
+      return -1;
   }
   else
   {
     // Read I2C Data and Send No Acknowledge
-    twi_status=i2c_transmit(I2C_DATA);
-    if (twi_status != TW_MR_DATA_NACK) goto i2c_quit;
+    twi_status = i2c_transmit(I2C_DATA);
+    if (twi_status != TW_MR_DATA_NACK)
+      return -1;
   }
+
   // Get the Data
-  *data=TWDR;
-  r_val=0;
-i2c_quit:
-  return r_val;
+  *data = TWDR;
+
+  return 0;
 }
 
 void Write_MCP23008(unsigned char reg_addr,unsigned char data)
@@ -216,9 +217,9 @@ void init_lcd()
 
 void lcd_puts(const char *s, uint8_t backlit)
 {
-  register char c;
+  char c;
 
-  while ((c=*s++))
+  while ((c = *s++))
     send_byte(1, c, backlit);
 }
 
