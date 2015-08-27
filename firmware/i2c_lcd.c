@@ -9,16 +9,33 @@
 #include "MCP23008.h"
 
 // Bits in byte written to HD44780 via MCP23008 GP1-GP7 pins (GP0 not connected)
-#define LCD_RS   1 // GP1:   Register Select (0: cmd, 1: data)
-#define LCD_E    2 // GP2:   Enable bit
-#define LCD_DB4  3 // GP3-6: Highest 4 data bits
-#define LCD_DB5  4 //        DB0-3 not used in 4-bit mode.
-#define LCD_DB6  5 //        Instead, a byte is written to DB4-7 in 2 nibbles. 
-#define LCD_DB7  6 //        
-#define LCD_LITE 7 // GP7:   LCD backlight on/off (only on 16 pin LCDs)
+#define LCD_RS     1 // GP1:   Register Select (0: cmd, 1: data)
+#define LCD_E      2 // GP2:   Enable bit
+#define LCD_DB4    3 // GP3-6: Highest 4 data bits
+#define LCD_DB5    4 //        DB0-3 not used in 4-bit mode.
+#define LCD_DB6    5 //        Instead, a byte is written to DB4-7 in 2 nibbles. 
+#define LCD_DB7    6 //        
+#define LCD_LITE   7 // GP7:   LCD backlight on/off (only on 16 pin LCDs)
+
+#define LCD_DDRAM  LCD_DB7 // bit for setting DDRAM address
+
+// #define LINE1 0x00    // First char on line 1
+// #define LINE2 0x40    // First char on line 2
+// #define LINE3 0x14    // First char on line 3
+// #define LINE4 0x54    // First char on line 4
 
 void send_nibble(uint8_t rs, uint8_t nibble, uint8_t backlit)
 {
+  // The HD44780 LCD driver reads on the falling edge of LCD_E.
+  // To send data or a command to the display:
+  //   1. Set Enable to high
+  //   2. Set RS and D0-D7 desired values
+  //   3. Set Enable to low
+  // I don't (yet) know how to write to only one pin over I2C, so I just write
+  // the byte twice, once with LCD_E high and once low.
+  // In any case two delay-separated I2C transactions are needed, so this is
+  // not too bad.
+
   uint8_t byte = 0;
 
   if (rs)
@@ -39,41 +56,25 @@ void send_nibble(uint8_t rs, uint8_t nibble, uint8_t backlit)
   _delay_ms(1);
 }
 
-// Using LCD in 4 bit mode requires writing the 4 highest and 4 lowest data
-// bits in two separate, sequential bytes.
+// Using LCD in 4 bit mode requires writing the high and low nibbles
+// in two separate, sequential bytes.
 void send_byte(uint8_t rs, uint8_t data, uint8_t backlit)
 {
   send_nibble(rs, (data & 0xf0) >> 4, backlit);
   send_nibble(rs, (data & 0x0f), backlit);
 }
 
+void lcd_write(uint8_t data, uint8_t backlit)
+{
+  send_byte(1, data, backlit);
+}
+
+void lcd_command(uint8_t cmd)
+{
+  send_byte(0, cmd, 0);
+}
+
 void init_lcd()
-{
-  // Bit patterns come from HD44780 data sheet tables 4 and 6.
-
-  _delay_ms(15);    // Need long delay between power-up and initialization
-  send_nibble(0, 0b0010, 0);   // Set to 4 bit operation (1 nibble operation)
-  _delay_ms(5);
-
-  send_byte(0, 0b00101000, 0); // 4 bit mode, 2 display lines, 5x8 dot font
-  send_byte(0, 0b00001111, 0); // Display on, cursor on, cursor blinking
-  send_byte(0, 1, 0);          // Clear display
-
-  // See "Entry mode set" in HD44780 data sheet, table 6.
-  // Increment cursor position, No display shift
-  // TODO: put this in its own function (?)
-  send_byte(0, 0b00000110, 0);
-}
-
-void lcd_puts(const char *s, uint8_t backlit)
-{
-  char c;
-
-  while ((c = *s++))
-    send_byte(1, c, backlit);
-}
-
-int main()
 {
   i2c_init();
 
@@ -81,10 +82,88 @@ int main()
   write_mcp23008(MCP23008_IODIR, 0);
   write_mcp23008(MCP23008_GPIO, 0);
 
+  // Bit patterns come from HD44780 data sheet tables 4 and 6.
+  _delay_ms(15);               // Long delay from power-up to initialization
+  send_nibble(0, 0b0010, 0);   // Set to 4 bit operation (1 nibble operation)
+  _delay_ms(5);
+
+  lcd_command(0b00101000); // 4 bit mode, 2 display lines, 5x8 dot font
+  // lcd_command(0b00111000); // 4 bit mode, 1 display line, 5x8 dot font
+  lcd_command(0b00001111); // Display on, cursor on, cursor blinking
+
+  lcd_command(1);          // Clear display (similar to lcd_clrscr())
+
+  // See "Entry mode set" in HD44780 data sheet, table 6.
+  // Increment cursor position, No display shift
+  // TODO: put this in its own function (?)
+  lcd_command(0b00000110);
+}
+
+void lcd_puts(const char *s, uint8_t backlit)
+{
+  char c;
+
+  while ((c = *s++))
+    lcd_write(c, backlit);
+}
+
+void lcd_goto(uint8_t pos)
+{
+  lcd_command((1 << LCD_DDRAM) + pos);
+}
+
+void lcd_clrscr()
+{
+  send_nibble(0, 0, 1);
+  send_nibble(0, 1, 1);
+}
+
+void lcd_home()
+{
+  send_nibble(0, 0, 1);
+  send_nibble(0, 2, 1);
+}
+
+int main()
+{
   init_lcd();
 
   uint8_t backlit = 1;
-  lcd_puts("Hello World!", backlit);
+
+  while (1)
+  {
+    lcd_clrscr();
+    // lcd_home();
+
+    // lcd_goto(LINE1);
+    // lcd_puts("Line 1", backlit);
+    // _delay_ms(500);
+
+    // lcd_goto(LINE2);
+    // lcd_puts("Line 2", backlit);
+    // _delay_ms(500);
+
+    // lcd_goto(LINE3);
+    // lcd_puts("Line 3", backlit);
+    // _delay_ms(500);
+
+    // lcd_goto(LINE4);
+    // lcd_puts("Line 4", backlit);
+    // _delay_ms(500);
+
+
+    for (uint8_t i = 0; i < 5; i++)
+    {
+      if (i == 0)
+      {
+        lcd_clrscr();
+        lcd_home();
+      }
+
+      lcd_puts("Hello World!", backlit);
+      _delay_ms(500);
+    }
+  }
 
   return 0;
 }
