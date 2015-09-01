@@ -1,3 +1,5 @@
+// Derived from blog post at http://www.ermicro.com/blog/?p=1239
+
 #ifndef __MCP23008_H__
 #define __MCP23008_H__
 

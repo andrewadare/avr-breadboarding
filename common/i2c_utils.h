@@ -1,3 +1,5 @@
+// Derived from blog post at http://www.ermicro.com/blog/?p=1239
+
 #ifndef __I2C_UTILS_H__
 #define __I2C_UTILS_H__
 
