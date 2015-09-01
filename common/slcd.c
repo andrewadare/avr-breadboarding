@@ -7,7 +7,7 @@ void send_nibble(uint8_t rs, uint8_t nibble, uint8_t backlit)
   // The HD44780 LCD driver reads on the falling edge of LCD_E.
   // To send data or a command to the display:
   //   1. Set Enable to high
-  //   2. Set RS and D0-D7 desired values
+  //   2. Set RS and data bits DB0-DB7
   //   3. Set Enable to low
   // I don't (yet) know how to write to only one pin over I2C, so I just write
   // the byte twice, once with LCD_E high and once low.
@@ -85,13 +85,17 @@ void lcd_puts(const char *s, uint8_t backlit)
     lcd_write(c, backlit);
 }
 
-void lcd_goto(uint8_t pos)
+// This implements the "Set DDRAM address" instruction.
+void lcd_goto(uint8_t line, uint8_t column)
 {
-  // This implements the "Set DDRAM address" instruction.
-  // The HD44780 is designed to control a 4 x 40 display, and the resulting
-  // position depends on your LCD dimensions.
-  // Best to find and define LINE1-LINE4, then navigate w.r.t those points.
-  send_byte(0, 0x80 + pos, 1);
+  uint8_t l, c;
+  l = (line == 0)? LCD_LINE0 :
+      (line == 1)? LCD_LINE1 :
+      (line == 2)? LCD_LINE2 :
+      (line == 3)? LCD_LINE3 :
+      LCD_LINE0;
+  c = (column < LCD_WIDTH)? column : 0;
+  send_byte(0, 0x80 + l + c, 1);
 }
 
 void lcd_clrscr()

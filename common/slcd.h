@@ -8,7 +8,8 @@
 
 #include "MCP23008.h"
 
-// Bits in byte written to HD44780 via MCP23008 GP1-GP7 pins (GP0 not connected)
+// Bits in byte written to HD44780 via MCP23008 GP1-GP7 pins (GP0 not connected).
+// In other words, these defs are w.r.t. MCP23008 (not HD44780) pins.
 #define LCD_RS     1 // GP1:   Register Select (0: cmd, 1: data)
 #define LCD_E      2 // GP2:   Enable bit
 #define LCD_DB4    3 // GP3-6: Highest 4 data bits
@@ -17,11 +18,17 @@
 #define LCD_DB7    6 //        
 #define LCD_LITE   7 // GP7:   LCD backlight on/off (only on 16 pin LCDs)
 
-// Line start positions for a 20x4 display
-#define LINE1  0 // First char on line 1
-#define LINE2 40 // First char on line 2
-#define LINE3 20 // First char on line 3
-#define LINE4 84 // First char on line 4
+// LCD display size
+// For sizes other than 4x20, LCD_LINE* below must be redefined.
+#define LCD_LINES  4
+#define LCD_WIDTH 20
+
+// These are line start positions as DDRAM offsets from 0x80 (DB7). 
+// The HD44780 is designed to control a 4 x 40 display.
+#define LCD_LINE0 0x00 // First char on line 1
+#define LCD_LINE1 0x40 // First char on line 2
+#define LCD_LINE2 0x14 // First char on line 3
+#define LCD_LINE3 0x54 // First char on line 4
 
 void send_nibble(uint8_t rs, uint8_t nibble, uint8_t backlit);
 void send_byte(uint8_t rs, uint8_t data, uint8_t backlit);
@@ -29,7 +36,7 @@ void lcd_write(uint8_t data, uint8_t backlit);
 void lcd_command(uint8_t cmd);
 void init_lcd();
 void lcd_puts(const char *s, uint8_t backlit);
-void lcd_goto(uint8_t pos);
+void lcd_goto(uint8_t line, uint8_t column); // Use e.g. LINE2 as 1st arg
 void lcd_clrscr();
 void lcd_home();
 
