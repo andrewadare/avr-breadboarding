@@ -12,16 +12,16 @@ int main()
   {
     lcd_clrscr();
 
-    lcd_goto(LINE1);
+    lcd_goto(0, 0);
     lcd_puts("Line 1", backlit);
 
-    lcd_goto(LINE2);
+    lcd_goto(1, 0);
     lcd_puts("Line 2", backlit);
 
-    lcd_goto(LINE3);
+    lcd_goto(2, 0);
     lcd_puts("Line 3", backlit);
 
-    lcd_goto(LINE4);
+    lcd_goto(3, 0);
     lcd_puts("Line 4", backlit);
 
     _delay_ms(500);
@@ -29,11 +29,20 @@ int main()
     // Blink the backlight
     for (uint8_t i=0; i<6; i++)
     {
-      send_byte(0, 0x80 + LINE4 + 6, i%2);
+      send_byte(0, 0x80 + LCD_LINE3 + 6, i%2);
       _delay_ms(50);
     }
 
     _delay_ms(500);
+
+    // Raster the cursor to check the goto function
+    lcd_clrscr();
+    for (uint8_t i=0; i<LCD_LINES; i++)
+      for (uint8_t j=0; j<LCD_WIDTH; j++)
+      {
+        lcd_goto(i, j);
+        _delay_ms(100);
+      }
 
   }
 
