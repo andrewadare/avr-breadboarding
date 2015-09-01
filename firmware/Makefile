@@ -116,7 +116,7 @@ $(TARGET).elf: $(OBJECTS)
 	$(OBJDUMP) -S $< > $@
 
 ## These targets don't have files named after them
-.PHONY: all disassemble disasm eeprom size clean squeaky_clean flash fuses
+.PHONY: all disassemble disasm eeprom size clean flash fuses
 
 all: $(TARGET).hex 
 
@@ -145,7 +145,7 @@ clean_target:
 	$(TARGET).eeprom
 
 clean:
-	rm -f *.elf *.hex *.obj *.o *.d *.eep *.lst *.lss *.sym *.map *~ *.eeprom
+	rm -f *.elf *.hex *.obj *.o $(LIBDIR)/*.o *.d *.eep *.lst *.lss *.sym *.map *~ *.eeprom
 
 ##########------------------------------------------------------##########
 ##########              Programmer-specific details             ##########
