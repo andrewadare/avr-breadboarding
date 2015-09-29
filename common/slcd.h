@@ -19,7 +19,7 @@
 #define LCD_LITE   7 // GP7:   LCD backlight on/off (only on 16 pin LCDs)
 
 // LCD display size
-// For sizes other than 4x20, LCD_LINE* below must be redefined.
+// For sizes other than 4x20, LCD_LINE0-3 below may need to be redefined.
 #define LCD_LINES  4
 #define LCD_WIDTH 20
 
