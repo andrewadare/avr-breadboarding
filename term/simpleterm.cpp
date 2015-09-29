@@ -81,6 +81,7 @@ int main(int argc, char *argv[])
     initscr();
     noecho();
     nodelay(stdscr, TRUE);
+    scrollok(stdscr, TRUE);
 
     int bps = -1;
     sp_get_config_baudrate(config, &bps);
