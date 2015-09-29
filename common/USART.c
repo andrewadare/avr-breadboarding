@@ -134,10 +134,13 @@ void printBinaryByte(uint8_t byte)
 }
 
 // This requires floating point math libs, which add 2 kB to the memory
-// footprint. Maybe this should be put in a separate file if frequently used.
-// However, this is less of an issue on newer chips like the ATMega328.
+// footprint.
+// Doesn't print negative values correctly (TODO).
 void printFloat(float number)
 {
+  if (number < 0)
+    transmitByte('-');
+
   number = round(number * 100) / 100; /* round off to 2 decimal places */
   transmitByte('0' + number / 10);                       /* tens place */
   transmitByte('0' + number - 10 * floor(number / 10));        /* ones */
