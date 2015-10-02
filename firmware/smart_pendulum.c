@@ -1,7 +1,3 @@
-// Quadrature encoder readout using interrupt handler
-// Hardware setup:
-// - encoder channels A and B on ENC_PORT pins ENC_A and ENC_B
-// - forward/backward motion indicator LEDs on LEFT_LED and RIGHT_LED
 
 #include <avr/io.h>
 #include <util/delay.h>
@@ -9,21 +5,35 @@
 #include <stdlib.h> // For itoa()
 #include "slcd.h"
 
-// Encoder readout
-#define ENC_PORT    PORTB       // Encoder port write  
-#define ENC_PIN     PINB        // Encoder port read
-#define ENC_VECT    PCINT0_vect // Pin-change interrupt vector
-#define ENC_BANK    PCIE0       // Pin group for PCICR
-#define ENC_PCIMSK  PCMSK0      // PCI mask register
-#define ENC_A       1           // ENC_PORT pin for Ch A
-#define ENC_B       0           // ENC_PORT pin for Ch B
+// Cart encoder readout - x coordinate
+#define X_ENC_PORT    PORTB       // Encoder port write  
+#define X_ENC_PIN     PINB        // Encoder port read
+#define X_ENC_VECT    PCINT0_vect // Pin-change interrupt vector
+#define X_ENC_BANK    PCIE0       // Pin group for PCICR
+#define X_ENC_PCIMSK  PCMSK0      // PCI mask register
+#define X_ENC_A       1           // X_ENC_PORT pin for Ch A
+#define X_ENC_B       0           // X_ENC_PORT pin for Ch B
 
-// Cart motion indicator LEDs
-#define LED_DDR     DDRB
-#define LED_PORT    PORTB
+// Encoder for pendulum angle - theta coordinate
+#define T_ENC_PORT    PORTC       // Encoder port write  
+#define T_ENC_PIN     PINC        // Encoder port read
+#define T_ENC_VECT    PCINT1_vect // Pin-change interrupt vector
+#define T_ENC_BANK    PCIE1       // Pin group for PCICR
+#define T_ENC_PCIMSK  PCMSK1      // PCI mask register
+#define T_ENC_A       1           // T_ENC_PORT pin for Ch A
+#define T_ENC_B       0           // T_ENC_PORT pin for Ch B
+#define T_MAX         1023        // Encoder period (pulses/rev) - 1
+
+// Indicator LEDs for cart motion (left/right) and pendulum (clockwise/ccw)
+#define BLINK_DELAY 50 // ms
+#define X_LED_DDR   DDRB
+#define T_LED_DDR   DDRC
+#define X_LED_PORT  PORTB
+#define T_LED_PORT  PORTC
+#define CW_LED      2
+#define CCW_LED     3
 #define LEFT_LED    4
 #define RIGHT_LED   5
-#define BLINK_DELAY 50 // ms
 
 // Motor control via TI SN754410 driver
 #define MOTOR_DDR   DDRD
@@ -34,7 +44,9 @@
 #define RAMP_DELAY  2 // ms
 
 #define backlit 1
-volatile int16_t xcart = 0;  // Horizontal cart position in encoder ticks
+
+volatile  int16_t xcart = 0;  // Horizontal cart position in encoder ticks
+volatile uint16_t theta = 0;  // Pendulum angle in encoder ticks
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
 // unchanged (0) given a transition in the encoder Q state (qprev, qcurr).
@@ -49,16 +61,24 @@ const volatile int8_t lut[4][4] =
   { 0, -1, +1,  0}  // 3
 };
 
-// Set a pin in LED_PORT high for BLINK_DELAY ms
-void flash_pin(uint8_t pin)
+// Set a pin in X_LED_PORT high for BLINK_DELAY ms
+void flash_x_led(uint8_t pin)
 {
-  LED_PORT |= (1 << pin);
+  X_LED_PORT |= (1 << pin);
   _delay_ms(BLINK_DELAY);
-  LED_PORT &= ~(1 << pin);
+  X_LED_PORT &= ~(1 << pin);
 }
 
-// Pin-change ISR for encoder channels A and B
-ISR(ENC_VECT)
+// Set a pin in T_LED_PORT high for BLINK_DELAY ms
+void flash_t_led(uint8_t pin)
+{
+  T_LED_PORT |= (1 << pin);
+  _delay_ms(BLINK_DELAY);
+  T_LED_PORT &= ~(1 << pin);
+}
+
+// Pin-change ISR for x (cart) encoder
+ISR(X_ENC_VECT)
 {
   // Previous and current two-channel encoder states
   static uint8_t qprev = 0, qcurr = 0;
@@ -68,7 +88,7 @@ ISR(ENC_VECT)
 
   // Store previous Q; read current Q; update encval from the transition.
   qprev = qcurr;
-  qcurr = ((ENC_PIN & (1 << ENC_A)) | (ENC_PIN & (1 << ENC_B)));
+  qcurr = ((X_ENC_PIN & (1 << X_ENC_A)) | (X_ENC_PIN & (1 << X_ENC_B)));
   encval += lut[qprev][qcurr];
 
   // Flash indicator LEDs to show motion.
@@ -76,13 +96,50 @@ ISR(ENC_VECT)
   {
     xcart++;
     encval = 0;
-    flash_pin(LEFT_LED);
+    flash_x_led(LEFT_LED);
   }
   else if (encval < -3)
   {
     xcart--;
     encval = 0;
-    flash_pin(RIGHT_LED);
+    flash_x_led(RIGHT_LED);
+  }
+}
+
+// Pin-change ISR for theta (pendulum) encoder
+ISR(T_ENC_VECT)
+{
+  // Previous and current two-channel encoder states
+  static uint8_t qprev = 0, qcurr = 0;
+
+  // Short-term accumulation of encoder displacements
+  static int8_t encval = 0;
+
+  // Store previous Q; read current Q; update encval from the transition.
+  qprev = qcurr;
+  qcurr = ((T_ENC_PIN & (1 << T_ENC_A)) | (T_ENC_PIN & (1 << T_ENC_B)));
+  encval += lut[qprev][qcurr];
+
+  // Flash indicator LEDs to show motion.
+  if (encval > 3)
+  {
+    if (theta < T_MAX)
+      theta++;
+    else
+      theta = 0;
+    
+    encval = 0;
+    flash_t_led(CW_LED);
+  }
+  else if (encval < -3)
+  {
+    if (theta > 0)
+    theta--;
+    else
+      theta = T_MAX;
+
+    encval = 0;
+    flash_t_led(CCW_LED);
   }
 }
 
@@ -91,13 +148,17 @@ int main()
   init_lcd();
 
   // Configure encoder pins and interrupt system
-  ENC_PORT   |= ((1 << ENC_A) | (1 << ENC_B)); // Enable internal pullups
-  PCICR      |= (1 << ENC_BANK);               // Select interrupt pin group
-  ENC_PCIMSK |= ((1 << ENC_A) | (1 << ENC_B)); // Select interrupt pins
   sei();
+  X_ENC_PORT   |= ((1 << X_ENC_A) | (1 << X_ENC_B)); // Enable internal pullups
+  T_ENC_PORT   |= ((1 << T_ENC_A) | (1 << T_ENC_B));
+  PCICR        |= (1 << X_ENC_BANK);               // Select interrupt pin group
+  PCICR        |= (1 << T_ENC_BANK);
+  X_ENC_PCIMSK |= ((1 << X_ENC_A) | (1 << X_ENC_B)); // Select interrupt pins
+  T_ENC_PCIMSK |= ((1 << T_ENC_A) | (1 << T_ENC_B));
 
   // Indicator LEDs to output mode
-  LED_DDR |= ((1 << LEFT_LED) | (1 << RIGHT_LED));
+  X_LED_DDR |= ((1 << LEFT_LED) | (1 << RIGHT_LED));
+  T_LED_DDR |= ((1 << CW_LED) | (1 << CCW_LED));
 
   // Configure timer 0 (8 bits) for PWM to control motor speed.
   TCCR0A |= ((1 << WGM00) | (1 << WGM01)); // Fast PWM. Table 15-8 mode 3
@@ -114,13 +175,13 @@ int main()
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
   uint8_t target_speed = 0;
-  int16_t oldpos = 0;
+  int16_t oldx = 0;
   char val[6]; // ASCII representation of signed 16 bit integer
   while (1)
   {
-    if (xcart != oldpos)
+    if (xcart != oldx)
     {
-      oldpos = xcart;
+      oldx = xcart;
 
       target_speed = (xcart < -10 || xcart > 10) ? 255 : 25*abs(xcart);
 
