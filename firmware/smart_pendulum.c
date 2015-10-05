@@ -14,6 +14,7 @@
 #define X_ENC_PCIMSK  PCMSK0      // PCI mask register
 #define X_ENC_A       1           // X_ENC_PORT pin for Ch A
 #define X_ENC_B       0           // X_ENC_PORT pin for Ch B
+#define X_MAX         6000        // Upper limit on x position
 
 // Encoder for pendulum angle - theta coordinate
 #define T_ENC_PORT    PORTC       // Encoder port write  
@@ -67,7 +68,6 @@ ISR(X_ENC_VECT)
   qcurr = ((X_ENC_PIN & (1 << X_ENC_A)) | (X_ENC_PIN & (1 << X_ENC_B)));
   encval += lut[qprev][qcurr];
 
-  // Flash indicator LEDs to show motion.
   if (encval > 3)
   {
     xcart++;
@@ -94,7 +94,6 @@ ISR(T_ENC_VECT)
   qcurr = ((T_ENC_PIN & (1 << T_ENC_A)) | (T_ENC_PIN & (1 << T_ENC_B)));
   encval += lut[qprev][qcurr];
 
-  // Flash indicator LEDs to show motion.
   if (encval > 3)
   {
     theta = (theta < T_MAX) ? theta + 1 : 0;
