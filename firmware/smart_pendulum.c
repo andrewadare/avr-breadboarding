@@ -35,6 +35,7 @@
 #define RAMP_DELAY  2 // ms
 
 #define backlit 1
+#define period  1338 // ms
 
 volatile uint16_t xcart = 0;  // Horizontal cart position in encoder ticks
 volatile uint16_t theta = 3*(T_MAX + 1)/4;  // Pendulum angle in encoder ticks
@@ -53,6 +54,34 @@ const volatile int8_t lut[4][4] =
   {+1,  0,  0, -1}, // 2
   { 0, -1, +1,  0}  // 3
 };
+
+void move(int16_t dx)
+{
+  int16_t newx = xcart + dx;
+  OCR0A = OCR0B = 0;
+
+  if (newx < 0 || newx > X_MAX)
+    return;
+
+  if (dx > 0) // Move right
+  {
+    OCR0A = 255;
+    while (xcart < newx)
+    {
+      _delay_ms(1);
+    }
+    OCR0A = 0;
+  }
+  if (dx < 0) // Move left
+  {
+    OCR0B = 255;
+    while (xcart > newx)
+    {
+      _delay_ms(1);
+    }
+    OCR0B = 0;
+  }
+}
 
 // Pin-change ISR for x (cart) encoder
 ISR(X_ENC_VECT)
@@ -137,18 +166,25 @@ int main()
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
-  // uint8_t target_speed = 0;
-  // int16_t oldx = 0;
+  // Set up an initial oscillation
+  for (uint8_t i=0; i<10; i++)
+  {
+    move(+200);
+    _delay_ms(3*period/4);
+  }
+
+  for (uint8_t i=0; i<20; i++)
+  {
+    move(-200);
+    _delay_ms(500);
+    // _delay_ms(period/2);
+    move(+200);
+    _delay_ms(500);
+    // _delay_ms(period/2);
+  }
 
   while (1)
   {
-    // if (xcart != oldx)
-    // {
-    //   oldx = xcart;
-    //   target_speed = (xcart < -10 || xcart > 10) ? 255 : 25*abs(xcart);
-    // }
-
-
     if (TCNT1 == 0)
     {
       lcd_clrscr();
@@ -165,50 +201,6 @@ int main()
       }
       lcd_puts(tstr, backlit);
     }
-
-
-    /*
-        // For now, a test...
-        // Ramp motor to a speed proportional to xcart in -10..+10
-        if (xcart > 0)
-        {
-          OCR0A = 0;
-
-          // Ramp up to target
-          while (OCR0B < target_speed)
-          {
-            OCR0B++;
-            _delay_ms(RAMP_DELAY);
-          }
-          // Ramp down to target
-          while (OCR0B > target_speed)
-          {
-            OCR0B--;
-            _delay_ms(RAMP_DELAY);
-          }
-        }
-        else if (xcart < 0)
-        {
-          OCR0B = 0;
-
-          // Ramp up to target
-          while (OCR0A < target_speed)
-          {
-            OCR0A++;
-            _delay_ms(RAMP_DELAY);
-          }
-          // Ramp down to target
-          while (OCR0A > target_speed)
-          {
-            OCR0A--;
-            _delay_ms(RAMP_DELAY);
-          }
-        }
-        else
-        {
-          OCR0A = OCR0B = 0;
-        }
-        */
   }
 
   return 0;
