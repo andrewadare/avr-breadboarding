@@ -2,6 +2,7 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
+#include <util/atomic.h>
 #include <stdlib.h> // For itoa()
 #include "slcd.h"
 
@@ -22,18 +23,7 @@
 #define T_ENC_PCIMSK  PCMSK1      // PCI mask register
 #define T_ENC_A       1           // T_ENC_PORT pin for Ch A
 #define T_ENC_B       0           // T_ENC_PORT pin for Ch B
-#define T_MAX         1023        // Encoder period (pulses/rev) - 1
-
-// Indicator LEDs for cart motion (left/right) and pendulum (clockwise/ccw)
-#define BLINK_DELAY 50 // ms
-#define X_LED_DDR   DDRB
-#define T_LED_DDR   DDRC
-#define X_LED_PORT  PORTB
-#define T_LED_PORT  PORTC
-#define CW_LED      2
-#define CCW_LED     3
-#define LEFT_LED    4
-#define RIGHT_LED   5
+#define T_MAX         1199        // Encoder period (pulses/rev) - 1
 
 // Motor control via TI SN754410 driver
 #define MOTOR_DDR   DDRD
@@ -45,8 +35,10 @@
 
 #define backlit 1
 
-volatile  int16_t xcart = 0;  // Horizontal cart position in encoder ticks
-volatile uint16_t theta = 0;  // Pendulum angle in encoder ticks
+volatile uint16_t xcart = 0;  // Horizontal cart position in encoder ticks
+volatile uint16_t theta = 3*(T_MAX + 1)/4;  // Pendulum angle in encoder ticks
+char xstr[6]; // ASCII representation of x for LCD display
+char tstr[6]; // ASCII representation of theta
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
 // unchanged (0) given a transition in the encoder Q state (qprev, qcurr).
@@ -60,22 +52,6 @@ const volatile int8_t lut[4][4] =
   {+1,  0,  0, -1}, // 2
   { 0, -1, +1,  0}  // 3
 };
-
-// Set a pin in X_LED_PORT high for BLINK_DELAY ms
-void flash_x_led(uint8_t pin)
-{
-  X_LED_PORT |= (1 << pin);
-  _delay_ms(BLINK_DELAY);
-  X_LED_PORT &= ~(1 << pin);
-}
-
-// Set a pin in T_LED_PORT high for BLINK_DELAY ms
-void flash_t_led(uint8_t pin)
-{
-  T_LED_PORT |= (1 << pin);
-  _delay_ms(BLINK_DELAY);
-  T_LED_PORT &= ~(1 << pin);
-}
 
 // Pin-change ISR for x (cart) encoder
 ISR(X_ENC_VECT)
@@ -96,13 +72,11 @@ ISR(X_ENC_VECT)
   {
     xcart++;
     encval = 0;
-    flash_x_led(LEFT_LED);
   }
   else if (encval < -3)
   {
     xcart--;
     encval = 0;
-    flash_x_led(RIGHT_LED);
   }
 }
 
@@ -123,23 +97,13 @@ ISR(T_ENC_VECT)
   // Flash indicator LEDs to show motion.
   if (encval > 3)
   {
-    if (theta < T_MAX)
-      theta++;
-    else
-      theta = 0;
-    
+    theta = (theta < T_MAX) ? theta + 1 : 0;
     encval = 0;
-    flash_t_led(CW_LED);
   }
   else if (encval < -3)
   {
-    if (theta > 0)
-    theta--;
-    else
-      theta = T_MAX;
-
+    theta = (theta > 0) ? theta - 1 : T_MAX;
     encval = 0;
-    flash_t_led(CCW_LED);
   }
 }
 
@@ -156,10 +120,6 @@ int main()
   X_ENC_PCIMSK |= ((1 << X_ENC_A) | (1 << X_ENC_B)); // Select interrupt pins
   T_ENC_PCIMSK |= ((1 << T_ENC_A) | (1 << T_ENC_B));
 
-  // Indicator LEDs to output mode
-  X_LED_DDR |= ((1 << LEFT_LED) | (1 << RIGHT_LED));
-  T_LED_DDR |= ((1 << CW_LED) | (1 << CCW_LED));
-
   // Configure timer 0 (8 bits) for PWM to control motor speed.
   TCCR0A |= ((1 << WGM00) | (1 << WGM01)); // Fast PWM. Table 15-8 mode 3
   TCCR0A |= (1 << COM0A1);                 // Output to OC0A/PD6. Table 15-3
@@ -170,67 +130,86 @@ int main()
   // get continuously compared with TCNT0
   OCR0A = OCR0B = 0;
 
+  // Run timer 1 at CPU/64. Then TCNT1 resets at 16MHz/64/65535 = 3.8 Hz.
+  TCCR1B |= ((1 << CS11) | (1 << CS10));   // Table 16-5.
+  // TCCR1B |= (1 << CS12);   // CPU/256
+
   // Enable motor!
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
-  uint8_t target_speed = 0;
-  int16_t oldx = 0;
-  char val[6]; // ASCII representation of signed 16 bit integer
+  // uint8_t target_speed = 0;
+  // int16_t oldx = 0;
+
   while (1)
   {
-    if (xcart != oldx)
+    // if (xcart != oldx)
+    // {
+    //   oldx = xcart;
+    //   target_speed = (xcart < -10 || xcart > 10) ? 255 : 25*abs(xcart);
+    // }
+
+
+    if (TCNT1 == 0)
     {
-      oldx = xcart;
-
-      target_speed = (xcart < -10 || xcart > 10) ? 255 : 25*abs(xcart);
-
-      itoa(xcart, val, 10); // radix = 10
       lcd_clrscr();
       lcd_goto(0,0);
-      lcd_puts(val, backlit);
+      ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+      {
+        itoa(xcart, xstr, 10); // radix = 10
+      }
+      lcd_puts(xstr, backlit);
+      lcd_goto(1,0);
+      ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+      {
+        itoa(theta, tstr, 10);
+      }
+      lcd_puts(tstr, backlit);
     }
 
-    // For now, a test...
-    // Ramp motor to a speed proportional to xcart in -10..+10
-    if (xcart > 0)
-    {
-      OCR0A = 0;
 
-      // Ramp up to target
-      while (OCR0B < target_speed)
-      {
-        OCR0B++;
-        _delay_ms(RAMP_DELAY);
-      }
-      // Ramp down to target
-      while (OCR0B > target_speed)
-      {
-        OCR0B--;
-        _delay_ms(RAMP_DELAY);
-      }
-    }
-    else if (xcart < 0)
-    {
-      OCR0B = 0;
+    /*
+        // For now, a test...
+        // Ramp motor to a speed proportional to xcart in -10..+10
+        if (xcart > 0)
+        {
+          OCR0A = 0;
 
-      // Ramp up to target
-      while (OCR0A < target_speed)
-      {
-        OCR0A++;
-        _delay_ms(RAMP_DELAY);
-      }
-      // Ramp down to target
-      while (OCR0A > target_speed)
-      {
-        OCR0A--;
-        _delay_ms(RAMP_DELAY);
-      }
-    }
-    else
-    {
-      OCR0A = OCR0B = 0;
-    }
+          // Ramp up to target
+          while (OCR0B < target_speed)
+          {
+            OCR0B++;
+            _delay_ms(RAMP_DELAY);
+          }
+          // Ramp down to target
+          while (OCR0B > target_speed)
+          {
+            OCR0B--;
+            _delay_ms(RAMP_DELAY);
+          }
+        }
+        else if (xcart < 0)
+        {
+          OCR0B = 0;
+
+          // Ramp up to target
+          while (OCR0A < target_speed)
+          {
+            OCR0A++;
+            _delay_ms(RAMP_DELAY);
+          }
+          // Ramp down to target
+          while (OCR0A > target_speed)
+          {
+            OCR0A--;
+            _delay_ms(RAMP_DELAY);
+          }
+        }
+        else
+        {
+          OCR0A = OCR0B = 0;
+        }
+        */
   }
 
   return 0;
