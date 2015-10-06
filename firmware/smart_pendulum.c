@@ -3,8 +3,6 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <util/atomic.h>
-#include <stdlib.h> // For itoa()
-#include "slcd.h"
 
 // Cart encoder readout - x coordinate
 #define X_ENC_PORT    PORTB       // Encoder port write  
@@ -17,14 +15,16 @@
 #define X_MAX         6000        // Upper limit on x position
 
 // Encoder for pendulum angle - theta coordinate
-#define T_ENC_PORT    PORTC       // Encoder port write  
-#define T_ENC_PIN     PINC        // Encoder port read
-#define T_ENC_VECT    PCINT1_vect // Pin-change interrupt vector
-#define T_ENC_BANK    PCIE1       // Pin group for PCICR
-#define T_ENC_PCIMSK  PCMSK1      // PCI mask register
-#define T_ENC_A       1           // T_ENC_PORT pin for Ch A
-#define T_ENC_B       0           // T_ENC_PORT pin for Ch B
-#define T_MAX         1199        // Encoder period (pulses/rev) - 1
+#define T_ENC_PORT   PORTC        // Encoder port write  
+#define T_ENC_PIN    PINC         // Encoder port read
+#define T_ENC_VECT   PCINT1_vect  // Pin-change interrupt vector
+#define T_ENC_BANK   PCIE1        // Pin group for PCICR
+#define T_ENC_PCIMSK PCMSK1       // PCI mask register
+#define T_ENC_A      1            // T_ENC_PORT pin for Ch A
+#define T_ENC_B      0            // T_ENC_PORT pin for Ch B
+#define T_MAX        1199         // Encoder period (pulses/rev) - 1
+#define T_REF        T_MAX/4      // Vertical position (PID target value)
+#define T_INIT       3*T_MAX/4    // Starting position (pendulum at rest)
 
 // Motor control via TI SN754410 driver
 #define MOTOR_DDR   DDRD
@@ -46,11 +46,10 @@ volatile uint8_t rotreg = 0;
 #define CW_TO_CCW 2
 #define CCW_TO_CW 3
 
-volatile uint16_t xcart = 3000;  // Horizontal cart position in encoder ticks
-volatile uint16_t theta = 3*(T_MAX + 1)/4;  // Pendulum angle in encoder ticks
-
-char xstr[6]; // ASCII representation of x for LCD display
-char tstr[6]; // ASCII representation of theta
+volatile uint16_t xcart = 3000;    // Horizontal cart position in encoder ticks
+volatile uint16_t theta = T_INIT;  // Pendulum angle in encoder ticks
+volatile int16_t  omega = 0;       // Angular velocity
+volatile int16_t  error = T_REF - T_INIT; // Theta error for PID
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
 // unchanged (0) given a transition in the encoder Q state (qprev, qcurr).
@@ -102,7 +101,7 @@ void move(int16_t dx)
     OCR0A = 255;
     while (xcart < newx)
     {
-      _delay_ms(1);
+      _delay_us(100);
     }
     OCR0A = 0;
   }
@@ -111,7 +110,7 @@ void move(int16_t dx)
     OCR0B = 255;
     while (xcart > newx)
     {
-      _delay_ms(1);
+      _delay_us(100);
     }
     OCR0B = 0;
   }
@@ -165,6 +164,7 @@ ISR(T_ENC_VECT)
 
     theta = (theta < T_MAX) ? theta + 1 : 0;
     encval = 0;
+    error = T_REF - theta;
   }
   else if (encval < -3) // Theta decreasing (CW rotation)
   {
@@ -173,13 +173,12 @@ ISR(T_ENC_VECT)
 
     theta = (theta > 0) ? theta - 1 : T_MAX;
     encval = 0;
+    error = T_REF - theta;
   }
 }
 
 int main()
 {
-  init_lcd();
-
   // Configure encoder pins and interrupt system
   sei();
   X_ENC_PORT   |= ((1 << X_ENC_A) | (1 << X_ENC_B)); // Enable internal pullups
@@ -200,29 +199,15 @@ int main()
   OCR0A = OCR0B = 0;
 
   // Run timer 1 at CPU/64. Then TCNT1 resets at 16MHz/64/65535 = 3.8 Hz.
-  TCCR1B |= ((1 << CS11) | (1 << CS10));   // Table 16-5.
+  // TCCR1B |= ((1 << CS11) | (1 << CS10));   // Table 16-5.
   // TCCR1B |= (1 << CS12);   // CPU/256
 
   // Enable motor!
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
-  // // Set up an initial oscillation
-  // for (uint8_t i=0; i<10; i++)
-  // {
-  //   move(+200);
-  //   _delay_ms(3*period/4);
-  // }
-
-  // for (uint8_t i=0; i<20; i++)
-  // {
-  //   move(-200);
-  //   _delay_ms(500);
-  //   // _delay_ms(period/2);
-  //   move(+200);
-  //   _delay_ms(500);
-  //   // _delay_ms(period/2);
-  // }
+  // Raise PB2 and PB3 to output mode
+  DDRB |= ((1 << 2) | (1 << 3));
 
   while (1)
   {
@@ -235,24 +220,22 @@ int main()
       move(-1300);
     }
 
-/*
-    if (TCNT1 == 0)
+    if (abs(error) < 50)
+      PORTB |= (1 << 2);
+    else
+      PORTB &= ~(1 << 2);
+
+    if (abs(error) < 10)
+      PORTB |= (1 << 3);
+    else
+      PORTB &= ~(1 << 3);
+
+    // PID loop
+    while (abs(error) < 20)
     {
-      lcd_clrscr();
-      lcd_goto(0,0);
-      ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-      {
-        itoa(xcart, xstr, 10); // radix = 10
-      }
-      lcd_puts(xstr, backlit);
-      lcd_goto(1,0);
-      ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-      {
-        itoa(theta, tstr, 10);
-      }
-      lcd_puts(tstr, backlit);
+      if (rotation_state() == CW)
+        move(5*error);
     }
-    */
 
   }
 
