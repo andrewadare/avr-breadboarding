@@ -37,8 +37,18 @@
 #define backlit 1
 #define period  1338 // ms
 
-volatile uint16_t xcart = 0;  // Horizontal cart position in encoder ticks
+// Register for storing pendulum rotation state.
+volatile uint8_t rotreg = 0;
+#define CURR_ROT 0        // Bit 0 for current rotation direction
+#define PREV_ROT 1        // Bit 1 for previous rotation direction
+#define CW 0              // Next 4 definitions encode prev + current
+#define CCW 1             // rotation directions.
+#define CW_TO_CCW 2
+#define CCW_TO_CW 3
+
+volatile uint16_t xcart = 3000;  // Horizontal cart position in encoder ticks
 volatile uint16_t theta = 3*(T_MAX + 1)/4;  // Pendulum angle in encoder ticks
+
 char xstr[6]; // ASCII representation of x for LCD display
 char tstr[6]; // ASCII representation of theta
 
@@ -55,13 +65,37 @@ const volatile int8_t lut[4][4] =
   { 0, -1, +1,  0}  // 3
 };
 
+uint8_t rotation_state()
+{
+  uint8_t rs = rotreg & ((1 << PREV_ROT) | (1 << CURR_ROT));
+
+  if (rs == ((CW << PREV_ROT) | (CW << CURR_ROT)))
+    return CW;
+
+  if (rs == ((CCW << PREV_ROT) | (CCW << CURR_ROT)))
+    return CCW;
+
+  if (rs == ((CW << PREV_ROT) | (CCW << CURR_ROT)))
+    return CW_TO_CCW;
+
+  if (rs == ((CCW << PREV_ROT) | (CW << CURR_ROT)))
+    return CCW_TO_CW;
+
+  return 99;
+}
+
 void move(int16_t dx)
 {
-  int16_t newx = xcart + dx;
-  OCR0A = OCR0B = 0;
+  int16_t newx = 0;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+  {
+    newx = xcart + dx;
+  }
 
   if (newx < 0 || newx > X_MAX)
     return;
+
+  OCR0A = OCR0B = 0;
 
   if (dx > 0) // Move right
   {
@@ -123,13 +157,20 @@ ISR(T_ENC_VECT)
   qcurr = ((T_ENC_PIN & (1 << T_ENC_A)) | (T_ENC_PIN & (1 << T_ENC_B)));
   encval += lut[qprev][qcurr];
 
-  if (encval > 3)
+  if (encval > 3) // Theta increasing (CCW rotation)
   {
+    // Store prev direction and set CURR_ROT bit high
+    rotreg <<= 1;
+    rotreg |= (1 << CURR_ROT);
+
     theta = (theta < T_MAX) ? theta + 1 : 0;
     encval = 0;
   }
-  else if (encval < -3)
+  else if (encval < -3) // Theta decreasing (CW rotation)
   {
+    // Store prev direction and keep CURR_ROT bit low
+    rotreg <<= 1;
+
     theta = (theta > 0) ? theta - 1 : T_MAX;
     encval = 0;
   }
@@ -166,25 +207,35 @@ int main()
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
-  // Set up an initial oscillation
-  for (uint8_t i=0; i<10; i++)
-  {
-    move(+200);
-    _delay_ms(3*period/4);
-  }
+  // // Set up an initial oscillation
+  // for (uint8_t i=0; i<10; i++)
+  // {
+  //   move(+200);
+  //   _delay_ms(3*period/4);
+  // }
 
-  for (uint8_t i=0; i<20; i++)
-  {
-    move(-200);
-    _delay_ms(500);
-    // _delay_ms(period/2);
-    move(+200);
-    _delay_ms(500);
-    // _delay_ms(period/2);
-  }
+  // for (uint8_t i=0; i<20; i++)
+  // {
+  //   move(-200);
+  //   _delay_ms(500);
+  //   // _delay_ms(period/2);
+  //   move(+200);
+  //   _delay_ms(500);
+  //   // _delay_ms(period/2);
+  // }
 
   while (1)
   {
+    if (rotation_state() == CW_TO_CCW)
+    {
+      move(+1300);
+    }
+    if (rotation_state() == CCW_TO_CW)
+    {
+      move(-1300);
+    }
+
+/*
     if (TCNT1 == 0)
     {
       lcd_clrscr();
@@ -201,6 +252,8 @@ int main()
       }
       lcd_puts(tstr, backlit);
     }
+    */
+
   }
 
   return 0;
