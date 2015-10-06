@@ -3,6 +3,7 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <util/atomic.h>
+#include <stdlib.h>
 
 // Cart encoder readout - x coordinate
 #define X_ENC_PORT    PORTB       // Encoder port write  
@@ -33,9 +34,6 @@
 #define MOTOR_1A    5
 #define MOTOR_2A    6
 #define RAMP_DELAY  2 // ms
-
-#define backlit 1
-#define period  1338 // ms
 
 // Register for storing pendulum rotation state.
 volatile uint8_t rotreg = 0;
@@ -98,22 +96,30 @@ void move(int16_t dx)
 
   if (dx > 0) // Move right
   {
-    OCR0A = 255;
     while (xcart < newx)
     {
+      OCR0A = 255;
       _delay_us(100);
     }
     OCR0A = 0;
   }
   if (dx < 0) // Move left
   {
-    OCR0B = 255;
     while (xcart > newx)
     {
+      OCR0B = 255;
       _delay_us(100);
     }
     OCR0B = 0;
   }
+}
+
+// Update angular velocity at a rate controlled by Timer 1 and OCR1A
+ISR(TIMER1_COMPA_vect)
+{
+  static uint16_t prev_theta = T_INIT;
+  omega = theta - prev_theta;
+  prev_theta = theta;
 }
 
 // Pin-change ISR for x (cart) encoder
@@ -198,9 +204,11 @@ int main()
   // get continuously compared with TCNT0
   OCR0A = OCR0B = 0;
 
-  // Run timer 1 at CPU/64. Then TCNT1 resets at 16MHz/64/65535 = 3.8 Hz.
-  // TCCR1B |= ((1 << CS11) | (1 << CS10));   // Table 16-5.
-  // TCCR1B |= (1 << CS12);   // CPU/256
+  // Timer 1 configuration - use as timebase for angular velocity
+  TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
+  TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
+  TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
+  OCR1A = 6250;             // Trigger interrupt every 100 ms
 
   // Enable motor!
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
@@ -225,7 +233,7 @@ int main()
     else
       PORTB &= ~(1 << 2);
 
-    if (abs(error) < 10)
+    if (abs(error) < 20)
       PORTB |= (1 << 3);
     else
       PORTB &= ~(1 << 3);
