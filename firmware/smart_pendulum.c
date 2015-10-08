@@ -13,7 +13,7 @@
 #define X_ENC_PCIMSK  PCMSK0      // PCI mask register
 #define X_ENC_A       1           // X_ENC_PORT pin for Ch A
 #define X_ENC_B       0           // X_ENC_PORT pin for Ch B
-#define X_MAX         6000        // Upper limit on x position
+#define X_MAX         5000        // Upper limit on x position
 
 // Encoder for pendulum angle - theta coordinate
 #define T_ENC_PORT   PORTC        // Encoder port write  
@@ -44,10 +44,11 @@ volatile uint8_t rotreg = 0;
 #define CW_TO_CCW 2
 #define CCW_TO_CW 3
 
-volatile uint16_t xcart = 3000;    // Horizontal cart position in encoder ticks
+volatile uint16_t xcart = 2000;    // Horizontal cart position in encoder ticks
 volatile uint16_t theta = T_INIT;  // Pendulum angle in encoder ticks
 volatile int16_t  omega = 0;       // Angular velocity
 volatile int16_t  error = T_REF - T_INIT; // Theta error for PID
+volatile int16_t  err10 = 0;       // (10*) the weighted moving average error
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
 // unchanged (0) given a transition in the encoder Q state (qprev, qcurr).
@@ -99,7 +100,6 @@ void move(int16_t dx)
     while (xcart < newx)
     {
       OCR0A = 255;
-      _delay_us(100);
     }
     OCR0A = 0;
   }
@@ -108,7 +108,6 @@ void move(int16_t dx)
     while (xcart > newx)
     {
       OCR0B = 255;
-      _delay_us(100);
     }
     OCR0B = 0;
   }
@@ -120,6 +119,16 @@ ISR(TIMER1_COMPA_vect)
   static uint16_t prev_theta = T_INIT;
   omega = theta - prev_theta;
   prev_theta = theta;
+  PORTB ^= (1 << 4);
+
+  // Exponentially weighted moving average. Update err10 to include this error.
+  // The weighting is 1/10*(current error) + 9/10*(running average):
+  //    y[t] = x[t]/10 + 9*y[t-1]/10
+  // Integer division error is avoided by working with 10y as follows:
+  // 10*y[t] = x[t] + 9*y[t-1]
+  //         = x[t] + 10*y[t-1] - (10*y[t-1] - 10/2)/10
+  // Remember to use err10/10 as the actual EWMA!
+  err10 = error + err10 - (err10 - 5)/10;
 }
 
 // Pin-change ISR for x (cart) encoder
@@ -208,22 +217,23 @@ int main()
   TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
   TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
   TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
-  OCR1A = 6250;             // Trigger interrupt every 100 ms
+  // OCR1A = 12500;            // Trigger interrupt every 200 ms
+  OCR1A = 6250;            // Trigger interrupt every 100 ms
 
   // Enable motor!
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
-  // Raise PB2 and PB3 to output mode
-  DDRB |= ((1 << 2) | (1 << 3));
+  // Raise PB2-4 to output mode for indicator LEDs
+  DDRB |= 0b00011100;
 
   while (1)
   {
-    if (rotation_state() == CW_TO_CCW)
+    if (rotation_state() == CW_TO_CCW && abs(error) > 50)
     {
       move(+1300);
     }
-    if (rotation_state() == CCW_TO_CW)
+    if (rotation_state() == CCW_TO_CW && abs(error) > 50)
     {
       move(-1300);
     }
@@ -233,17 +243,19 @@ int main()
     else
       PORTB &= ~(1 << 2);
 
-    if (abs(error) < 20)
-      PORTB |= (1 << 3);
-    else
-      PORTB &= ~(1 << 3);
 
     // PID loop
-    while (abs(error) < 20)
+    while (abs(error) < 40)
     {
-      if (rotation_state() == CW)
-        move(5*error);
+      PORTB |= (1 << 3);
+      move(20*error + -15*omega + err10/5);
+      // move(10*error + -10*omega + err10);
+      // move(7*error - 2*omega);
+      // if ((rotation_state() == CW  && error > -10) ||
+      //     (rotation_state() == CCW && error < +10))
+      //   move(error/2);
     }
+    PORTB &= ~(1 << 3);
 
   }
 
