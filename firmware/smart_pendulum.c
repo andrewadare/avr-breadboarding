@@ -6,6 +6,8 @@
 #include <stdlib.h>
 
 // #define ROUNDED_DIV(a, b) ((((a) * 10) / (b)) + 5) / 10)
+#define MIN(a,b) ((a) < (b) ? a : b)
+#define MAX(a,b) ((a) > (b) ? a : b)
 
 // Cart encoder readout - x coordinate
 #define X_ENC_PORT    PORTB       // Encoder port write  
@@ -26,7 +28,7 @@
 #define T_ENC_A      1            // T_ENC_PORT pin for Ch A
 #define T_ENC_B      0            // T_ENC_PORT pin for Ch B
 #define T_MAX        1199         // Encoder period (pulses/rev) - 1
-#define T_REF        T_MAX/4      // Vertical position (PID target value)
+#define T_REF        301 //T_MAX/4      // Vertical position (PID target value)
 #define T_INIT       3*T_MAX/4    // Starting position (pendulum at rest)
 
 // Motor control via TI SN754410 driver
@@ -36,6 +38,8 @@
 #define MOTOR_1A    5
 #define MOTOR_2A    6
 #define RAMP_DELAY  2 // ms
+
+// #define SWING_UP 1
 
 // Register for storing pendulum rotation state.
 volatile uint8_t rotreg = 0;
@@ -84,7 +88,7 @@ uint8_t rotation_state()
   return 99;
 }
 
-void move(int16_t dx)
+void move(int16_t dx, uint8_t speed)
 {
   int16_t newx = 0;
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
@@ -101,7 +105,7 @@ void move(int16_t dx)
   {
     while (xcart < newx)
     {
-      OCR0A = 255;
+      OCR0A = speed;
     }
     OCR0A = 0;
   }
@@ -109,7 +113,7 @@ void move(int16_t dx)
   {
     while (xcart > newx)
     {
-      OCR0B = 255;
+      OCR0B = speed;
     }
     OCR0B = 0;
   }
@@ -130,7 +134,7 @@ ISR(TIMER1_COMPA_vect)
   // 10*y[t] = x[t] + 9*y[t-1]
   //         = x[t] + 10*y[t-1] - (10*y[t-1] - 10/2)/10
   // Remember to use err10/10 as the actual EWMA!
-  err10 = error + err10 - (err10 - 5)/10;
+  // err10 = error + err10 - (err10 - 5)/10;
 }
 
 // Pin-change ISR for x (cart) encoder
@@ -229,36 +233,32 @@ int main()
   // Raise PB2-5 to output mode for indicator LEDs
   DDRB |= 0b00111100;
 
+  uint8_t speed = 0;
   while (1)
   {
-    // if (rotation_state() == CW_TO_CCW && abs(error) > 50)
-    // {
-    //   move(+1300);
-    // }
-    // if (rotation_state() == CCW_TO_CW && abs(error) > 50)
-    // {
-    //   move(-1300);
-    // }
 
-    if (rotation_state() == CW_TO_CCW && abs(error) > 50)
+#ifdef SWING_UP
+    if (abs(error) > 50)
     {
-      if (theta > T_REF && theta < (T_MAX + 1)/2)
-        move(+1500);
-      else
-        move(+1300);
-    }
-    if (rotation_state() == CCW_TO_CW && abs(error) > 50)
-    {
-      if (theta < T_REF)
-        move(-1500);
-      else
-        move(-1300);
-    }
-
-    if (abs(error) < 50)
-      PORTB |= (1 << 2);
-    else
       PORTB &= ~(1 << 2);
+      if (rotation_state() == CW_TO_CCW)
+      {
+        if (theta > T_REF && theta < (T_MAX + 1)/2)
+          move(+1500, 255);
+        else
+          move(+1300, 255);
+      }
+      if (rotation_state() == CCW_TO_CW)
+      {
+        if (theta < T_REF)
+          move(-1500, 255);
+        else
+          move(-1300, 255);
+      }
+    }
+    else
+      PORTB |= (1 << 2);
+#endif
 
     if (abs(error) < 10)
       PORTB |= (1 << 3);
@@ -270,7 +270,9 @@ int main()
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
-      move(19*error + -27*omega + err10/6);
+      speed = MIN(10*(abs(error) + abs(omega)), 255);
+      move(5*error, MAX(speed, 150));
+      // move(19*error + -27*omega + err10/8);
     }
     PORTB &= ~(1 << 4);
 
