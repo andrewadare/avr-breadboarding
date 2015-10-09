@@ -5,6 +5,8 @@
 #include <util/atomic.h>
 #include <stdlib.h>
 
+// #define ROUNDED_DIV(a, b) ((((a) * 10) / (b)) + 5) / 10)
+
 // Cart encoder readout - x coordinate
 #define X_ENC_PORT    PORTB       // Encoder port write  
 #define X_ENC_PIN     PINB        // Encoder port read
@@ -119,7 +121,7 @@ ISR(TIMER1_COMPA_vect)
   static uint16_t prev_theta = T_INIT;
   omega = theta - prev_theta;
   prev_theta = theta;
-  PORTB ^= (1 << 4);
+  // PORTB ^= (1 << 4);
 
   // Exponentially weighted moving average. Update err10 to include this error.
   // The weighting is 1/10*(current error) + 9/10*(running average):
@@ -224,18 +226,33 @@ int main()
   MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
   MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
 
-  // Raise PB2-4 to output mode for indicator LEDs
-  DDRB |= 0b00011100;
+  // Raise PB2-5 to output mode for indicator LEDs
+  DDRB |= 0b00111100;
 
   while (1)
   {
+    // if (rotation_state() == CW_TO_CCW && abs(error) > 50)
+    // {
+    //   move(+1300);
+    // }
+    // if (rotation_state() == CCW_TO_CW && abs(error) > 50)
+    // {
+    //   move(-1300);
+    // }
+
     if (rotation_state() == CW_TO_CCW && abs(error) > 50)
     {
-      move(+1300);
+      if (theta > T_REF && theta < (T_MAX + 1)/2)
+        move(+1500);
+      else
+        move(+1300);
     }
     if (rotation_state() == CCW_TO_CW && abs(error) > 50)
     {
-      move(-1300);
+      if (theta < T_REF)
+        move(-1500);
+      else
+        move(-1300);
     }
 
     if (abs(error) < 50)
@@ -243,20 +260,22 @@ int main()
     else
       PORTB &= ~(1 << 2);
 
+    if (abs(error) < 10)
+      PORTB |= (1 << 3);
+    else
+      PORTB &= ~(1 << 3);
+
 
     // PID loop
     while (abs(error) < 40)
     {
-      PORTB |= (1 << 3);
-      move(20*error + -15*omega + err10/5);
-      // move(10*error + -10*omega + err10);
-      // move(7*error - 2*omega);
-      // if ((rotation_state() == CW  && error > -10) ||
-      //     (rotation_state() == CCW && error < +10))
-      //   move(error/2);
+      PORTB |= (1 << 4);
+      move(19*error + -27*omega + err10/6);
     }
-    PORTB &= ~(1 << 3);
+    PORTB &= ~(1 << 4);
 
+    if (xcart > 10000)
+      PORTB |= (1 << 5);
   }
 
   return 0;
