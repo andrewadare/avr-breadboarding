@@ -5,7 +5,7 @@
 #include <util/atomic.h>
 #include <stdlib.h>
 
-// #define ROUNDED_DIV(a, b) ((((a) * 10) / (b)) + 5) / 10)
+#define ROUNDED_DIV(a, b) (((((a) * 10) / (b)) + 5) / 10)
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define MAX(a,b) ((a) > (b) ? a : b)
 
@@ -28,8 +28,8 @@
 #define T_ENC_A      1            // T_ENC_PORT pin for Ch A
 #define T_ENC_B      0            // T_ENC_PORT pin for Ch B
 #define T_MAX        1199         // Encoder period (pulses/rev) - 1
-#define T_REF        301 //T_MAX/4      // Vertical position (PID target value)
-#define T_INIT       3*T_MAX/4    // Starting position (pendulum at rest)
+#define T_REF        302          // Vertical position (PID target value)
+#define T_INIT       902          // Starting position (pendulum at rest)
 
 // Motor control via TI SN754410 driver
 #define MOTOR_DDR   DDRD
@@ -39,6 +39,7 @@
 #define MOTOR_2A    6
 #define RAMP_DELAY  2 // ms
 
+// Enable swing-drive if defined
 // #define SWING_UP 1
 
 // Register for storing pendulum rotation state.
@@ -134,7 +135,7 @@ ISR(TIMER1_COMPA_vect)
   // 10*y[t] = x[t] + 9*y[t-1]
   //         = x[t] + 10*y[t-1] - (10*y[t-1] - 10/2)/10
   // Remember to use err10/10 as the actual EWMA!
-  // err10 = error + err10 - (err10 - 5)/10;
+  err10 = error + err10 - (err10 - 5)/10;
 }
 
 // Pin-change ISR for x (cart) encoder
@@ -270,9 +271,10 @@ int main()
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
-      speed = MIN(10*(abs(error) + abs(omega)), 255);
-      move(5*error, MAX(speed, 150));
-      // move(19*error + -27*omega + err10/8);
+      speed = MIN(10*abs(error) + 
+                  10*abs(omega) + 
+                  3*abs(ROUNDED_DIV(err10, 1)), 255);
+      move(10*error, MAX(speed, 150));
     }
     PORTB &= ~(1 << 4);
 
