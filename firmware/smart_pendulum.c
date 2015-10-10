@@ -28,8 +28,8 @@
 #define T_ENC_A      1            // T_ENC_PORT pin for Ch A
 #define T_ENC_B      0            // T_ENC_PORT pin for Ch B
 #define T_MAX        1199         // Encoder period (pulses/rev) - 1
-#define T_REF        302          // Vertical position (PID target value)
-#define T_INIT       902          // Starting position (pendulum at rest)
+#define T_REF        300          // Vertical position (PID target value)
+#define T_INIT       900          // Starting position (pendulum at rest)
 
 // Motor control via TI SN754410 driver
 #define MOTOR_DDR   DDRD
@@ -40,7 +40,7 @@
 #define RAMP_DELAY  2 // ms
 
 // Enable swing-drive if defined
-// #define SWING_UP 1
+#define SWING_UP 1
 
 // Register for storing pendulum rotation state.
 volatile uint8_t rotreg = 0;
@@ -135,7 +135,8 @@ ISR(TIMER1_COMPA_vect)
   // 10*y[t] = x[t] + 9*y[t-1]
   //         = x[t] + 10*y[t-1] - (10*y[t-1] - 10/2)/10
   // Remember to use err10/10 as the actual EWMA!
-  err10 = error + err10 - (err10 - 5)/10;
+  if (abs(error) < 50)
+    err10 = error + err10 - (err10 - 5)/10;
 }
 
 // Pin-change ISR for x (cart) encoder
@@ -245,14 +246,14 @@ int main()
       if (rotation_state() == CW_TO_CCW)
       {
         if (theta > T_REF && theta < (T_MAX + 1)/2)
-          move(+1500, 255);
+          move(+1450, 255);
         else
           move(+1300, 255);
       }
       if (rotation_state() == CCW_TO_CW)
       {
         if (theta < T_REF)
-          move(-1500, 255);
+          move(-1450, 255);
         else
           move(-1300, 255);
       }
@@ -271,15 +272,21 @@ int main()
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
-      speed = MIN(10*abs(error) + 
-                  10*abs(omega) + 
-                  3*abs(ROUNDED_DIV(err10, 1)), 255);
-      move(10*error, MAX(speed, 150));
+      speed = MIN(2*abs(error) + 19*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), 255);
+      move(10*error + err10, MAX(speed, 150));
+
+      // pretty good
+      // speed = MIN(2*abs(error) + 20*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), 255);
+      // move(10*error + ROUNDED_DIV(err10, 4), MAX(speed, 150));
     }
     PORTB &= ~(1 << 4);
 
     if (xcart > 10000)
+    {
       PORTB |= (1 << 5);
+      MOTOR_PORT &= ~(1 << MOTOR_EN);
+      break;
+    }
   }
 
   return 0;
