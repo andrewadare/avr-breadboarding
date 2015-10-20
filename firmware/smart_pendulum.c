@@ -315,15 +315,15 @@ int main()
   while (1)
   {
     // Try to invert pendulum with swing-drive
-    swing();
+    // swing();
     indicate_angle();
 
     // PID loop
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
-      speed = MIN(20*abs(error) + 100*abs(omega) + 10*errsum, MAX_SPEED);
-      move(ROUNDED_DIV(4*error - omega + errsum, 10), speed, 0);
+      speed = MIN(40*abs(error) + 200*abs(omega) + 10*errsum, MAX_SPEED);
+      move(ROUNDED_DIV(4*error - 2*omega + errsum, 10), speed, 0);
     }
     PORTB &= ~(1 << 4);
 
