@@ -40,9 +40,6 @@
 #define MAX_SPEED   255
 #define RAMP_STEP   2
 
-// Enable swing-drive if defined
-// #define SWING_UP 1
-
 // Register for storing pendulum rotation state.
 volatile uint8_t rotreg = 0;
 #define CURR_ROT 0        // Bit 0 for current rotation direction
@@ -101,9 +98,13 @@ void move_right_to(int16_t x, uint16_t speed, uint16_t ramp_step)
   speed = MIN(speed, MAX_SPEED);
   ramp_step = MIN(ramp_step, MAX_SPEED);
 
-  while (xcart < x - 2)
-    if (TCNT1 % 50 == 0 && OCR0A + ramp_step <= speed)
+  while (xcart < x - 1)
+  {
+    if (ramp_step == 0)
+      OCR0A = speed;
+    else if (TCNT1 % 50 == 0 && OCR0A + ramp_step <= speed)
       OCR0A += ramp_step;
+  }
 
   OCR0A = 0;
 }
@@ -114,9 +115,13 @@ void move_left_to(int16_t x, uint16_t speed, uint16_t ramp_step)
   speed = MIN(speed, MAX_SPEED);
   ramp_step = MIN(ramp_step, MAX_SPEED);
 
-  while (xcart > x + 2)
-    if (TCNT1 % 50 == 0 && OCR0B + ramp_step <= speed)
+  while (xcart > x + 1)
+  {
+    if (ramp_step == 0)
+      OCR0B = speed;
+    else if (TCNT1 % 50 == 0 && OCR0B + ramp_step <= speed)
       OCR0B += ramp_step;
+  }
 
   OCR0B = 0;
 }
@@ -138,6 +143,44 @@ void move(int16_t dx, uint16_t speed, uint16_t ramp_step)
     move_right_to(newx, speed, ramp_step);
   if (dx < 0)
     move_left_to(newx, speed, ramp_step);
+}
+
+void swing()
+{
+  if (abs(error) > 50)
+  {
+    if (rotation_state() == CW_TO_CCW)
+    {
+      if (abs(error) < 100)
+        move(+800, MAX_SPEED, RAMP_STEP);
+      else if (abs(error) < 200)
+        move(+600, MAX_SPEED, RAMP_STEP);
+      else
+        move(+400, MAX_SPEED, RAMP_STEP);
+    }
+    if (rotation_state() == CCW_TO_CW)
+    {
+      if (abs(error) < 100)
+        move(-800, MAX_SPEED, RAMP_STEP);
+      else if (abs(error) < 200)
+        move(-600, MAX_SPEED, RAMP_STEP);
+      else
+        move(-400, MAX_SPEED, RAMP_STEP);
+    }
+  }
+}
+
+void indicate_angle()
+{
+  if (abs(error) > 50)
+    PORTB &= ~(1 << 2);
+  else
+    PORTB |= (1 << 2);
+
+  if (abs(error) < 10)
+    PORTB |= (1 << 3);
+  else
+    PORTB &= ~(1 << 3);
 }
 
 // Update angular velocity at a rate controlled by Timer 1 and OCR1A
@@ -271,57 +314,21 @@ int main()
 
   while (1)
   {
-
-#ifdef SWING_UP
-    if (abs(error) > 50)
-    {
-      PORTB &= ~(1 << 2);
-      if (rotation_state() == CW_TO_CCW)
-      {
-        if (abs(error) < 100)
-          move(+600, MAX_SPEED, RAMP_STEP);
-        else if (abs(error) < 200)
-          move(+500, MAX_SPEED, RAMP_STEP);
-        else
-          move(+400, MAX_SPEED, RAMP_STEP);
-      }
-      if (rotation_state() == CCW_TO_CW)
-      {
-        if (abs(error) < 100)
-          move(-600, MAX_SPEED, RAMP_STEP);
-        else if (abs(error) < 200)
-          move(-500, MAX_SPEED, RAMP_STEP);
-        else
-          move(-400, MAX_SPEED, RAMP_STEP);
-      }
-    }
-    else
-      PORTB |= (1 << 2);
-#endif
-
-    if (abs(error) < 10)
-      PORTB |= (1 << 3);
-    else
-      PORTB &= ~(1 << 3);
-
+    // Try to invert pendulum with swing-drive
+    swing();
+    indicate_angle();
 
     // PID loop
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
       speed = MIN(20*abs(error) + 100*abs(omega) + 10*errsum, MAX_SPEED);
-      // speed = MIN(2*abs(error) + 19*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), MAX_SPEED);
-      move(ROUNDED_DIV(error - omega + errsum, 10), MAX_SPEED, RAMP_STEP);
-      // move(ROUNDED_DIV(error - omega + errsum, 10), MAX(speed, 150), RAMP_STEP);
-
-      // pretty good
-      // speed = MIN(2*abs(error) + 20*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), MAX_SPEED);
-      // move(10*error + ROUNDED_DIV(err10, 4), MAX(speed, 150));
+      move(ROUNDED_DIV(4*error - omega + errsum, 10), speed, 0);
     }
     PORTB &= ~(1 << 4);
 
-
-    if (xcart < 0)
+    // Software endstops
+    if (xcart < 0 || xcart > X_MAX)
     {
       PORTB |= (1 << 5);
       MOTOR_PORT &= ~(1 << MOTOR_EN);
