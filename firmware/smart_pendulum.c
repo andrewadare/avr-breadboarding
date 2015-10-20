@@ -17,7 +17,7 @@
 #define X_ENC_PCIMSK  PCMSK0      // PCI mask register
 #define X_ENC_A       1           // X_ENC_PORT pin for Ch A
 #define X_ENC_B       0           // X_ENC_PORT pin for Ch B
-#define X_MAX         5000        // Upper limit on x position
+#define X_MAX         3000        // Upper limit on x position
 
 // Encoder for pendulum angle - theta coordinate
 #define T_ENC_PORT   PORTC        // Encoder port write  
@@ -37,10 +37,11 @@
 #define MOTOR_EN    4
 #define MOTOR_1A    5
 #define MOTOR_2A    6
-#define RAMP_DELAY  2 // ms
+#define MAX_SPEED   255
+#define RAMP_STEP   2
 
 // Enable swing-drive if defined
-#define SWING_UP 1
+// #define SWING_UP 1
 
 // Register for storing pendulum rotation state.
 volatile uint8_t rotreg = 0;
@@ -51,11 +52,12 @@ volatile uint8_t rotreg = 0;
 #define CW_TO_CCW 2
 #define CCW_TO_CW 3
 
-volatile uint16_t xcart = 2000;    // Horizontal cart position in encoder ticks
 volatile uint16_t theta = T_INIT;  // Pendulum angle in encoder ticks
-volatile int16_t  omega = 0;       // Angular velocity
-volatile int16_t  error = T_REF - T_INIT; // Theta error for PID
-volatile int16_t  err10 = 0;       // (10*) the weighted moving average error
+volatile  int16_t error = T_REF - T_INIT; // Theta error for PID
+volatile  int16_t omega = 0;       // Angular velocity
+volatile  int16_t xcart = 0;       // Horizontal cart position in encoder ticks
+volatile  int16_t err10 = 0;       // (10*) the weighted moving average error
+volatile  int16_t errsum = 0;
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
 // unchanged (0) given a transition in the encoder Q state (qprev, qcurr).
@@ -89,7 +91,37 @@ uint8_t rotation_state()
   return 99;
 }
 
-void move(int16_t dx, uint8_t speed)
+// Ramp PWM signal to speed [0-255] in ramp_step increments.
+// Incrementation delay is controlled by TCNT1 (duration of 50 ticks = 0.8 ms).
+// At this rate, a full ramp at stepsize 1 takes 0.8*255 = 204 ms.
+// Stop slightly short of x to reduce overshoot.
+void move_right_to(int16_t x, uint16_t speed, uint16_t ramp_step)
+{
+  OCR0A = OCR0B = 0;
+  speed = MIN(speed, MAX_SPEED);
+  ramp_step = MIN(ramp_step, MAX_SPEED);
+
+  while (xcart < x - 2)
+    if (TCNT1 % 50 == 0 && OCR0A + ramp_step <= speed)
+      OCR0A += ramp_step;
+
+  OCR0A = 0;
+}
+
+void move_left_to(int16_t x, uint16_t speed, uint16_t ramp_step)
+{
+  OCR0A = OCR0B = 0;
+  speed = MIN(speed, MAX_SPEED);
+  ramp_step = MIN(ramp_step, MAX_SPEED);
+
+  while (xcart > x + 2)
+    if (TCNT1 % 50 == 0 && OCR0B + ramp_step <= speed)
+      OCR0B += ramp_step;
+
+  OCR0B = 0;
+}
+
+void move(int16_t dx, uint16_t speed, uint16_t ramp_step)
 {
   int16_t newx = 0;
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
@@ -102,22 +134,10 @@ void move(int16_t dx, uint8_t speed)
 
   OCR0A = OCR0B = 0;
 
-  if (dx > 0) // Move right
-  {
-    while (xcart < newx)
-    {
-      OCR0A = speed;
-    }
-    OCR0A = 0;
-  }
-  if (dx < 0) // Move left
-  {
-    while (xcart > newx)
-    {
-      OCR0B = speed;
-    }
-    OCR0B = 0;
-  }
+  if (dx > 0)
+    move_right_to(newx, speed, ramp_step);
+  if (dx < 0)
+    move_left_to(newx, speed, ramp_step);
 }
 
 // Update angular velocity at a rate controlled by Timer 1 and OCR1A
@@ -136,7 +156,13 @@ ISR(TIMER1_COMPA_vect)
   //         = x[t] + 10*y[t-1] - (10*y[t-1] - 10/2)/10
   // Remember to use err10/10 as the actual EWMA!
   if (abs(error) < 50)
-    err10 = error + err10 - (err10 - 5)/10;
+  {
+    errsum += error;
+    errsum = MIN(error, 100);
+  }
+  else
+    errsum = 0;
+  // err10 = error + err10 - (err10 - 5)/10;
 }
 
 // Pin-change ISR for x (cart) encoder
@@ -157,11 +183,13 @@ ISR(X_ENC_VECT)
   {
     xcart++;
     encval = 0;
+    // PORTB ^= (1 << 2);
   }
   else if (encval < -3)
   {
     xcart--;
     encval = 0;
+    // PORTB ^= (1 << 3);
   }
 }
 
@@ -236,6 +264,11 @@ int main()
   DDRB |= 0b00111100;
 
   uint8_t speed = 0;
+
+  // Move cart out from its initial position at the far left side, x = 0,
+  // to a point near the center.
+  move(1500, MAX_SPEED, RAMP_STEP);
+
   while (1)
   {
 
@@ -245,17 +278,21 @@ int main()
       PORTB &= ~(1 << 2);
       if (rotation_state() == CW_TO_CCW)
       {
-        if (theta > T_REF && theta < (T_MAX + 1)/2)
-          move(+1450, 255);
+        if (abs(error) < 100)
+          move(+600, MAX_SPEED, RAMP_STEP);
+        else if (abs(error) < 200)
+          move(+500, MAX_SPEED, RAMP_STEP);
         else
-          move(+1300, 255);
+          move(+400, MAX_SPEED, RAMP_STEP);
       }
       if (rotation_state() == CCW_TO_CW)
       {
-        if (theta < T_REF)
-          move(-1450, 255);
+        if (abs(error) < 100)
+          move(-600, MAX_SPEED, RAMP_STEP);
+        else if (abs(error) < 200)
+          move(-500, MAX_SPEED, RAMP_STEP);
         else
-          move(-1300, 255);
+          move(-400, MAX_SPEED, RAMP_STEP);
       }
     }
     else
@@ -272,16 +309,19 @@ int main()
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
-      speed = MIN(2*abs(error) + 19*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), 255);
-      move(10*error + err10, MAX(speed, 150));
+      speed = MIN(20*abs(error) + 100*abs(omega) + 10*errsum, MAX_SPEED);
+      // speed = MIN(2*abs(error) + 19*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), MAX_SPEED);
+      move(ROUNDED_DIV(error - omega + errsum, 10), MAX_SPEED, RAMP_STEP);
+      // move(ROUNDED_DIV(error - omega + errsum, 10), MAX(speed, 150), RAMP_STEP);
 
       // pretty good
-      // speed = MIN(2*abs(error) + 20*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), 255);
+      // speed = MIN(2*abs(error) + 20*abs(omega) + 3*abs(ROUNDED_DIV(err10, 10)), MAX_SPEED);
       // move(10*error + ROUNDED_DIV(err10, 4), MAX(speed, 150));
     }
     PORTB &= ~(1 << 4);
 
-    if (xcart > 10000)
+
+    if (xcart < 0)
     {
       PORTB |= (1 << 5);
       MOTOR_PORT &= ~(1 << MOTOR_EN);
