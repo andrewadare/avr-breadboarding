@@ -3,7 +3,8 @@
 # For simplicity, this Makefile is shared. Just choose/add a TARGET.
 
 # Name of source file to build, minus the .c
-TARGET = smart_pendulum
+TARGET = 4digit_7segment
+# TARGET = smart_pendulum
 # TARGET = i2c_lcd
 # TARGET = quad_encoder
 # TARGET = SN754410
