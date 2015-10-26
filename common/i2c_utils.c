@@ -1,15 +1,18 @@
-#include <compat/twi.h>
 #include "i2c_utils.h"
 
 void i2c_init(void)
 {
-  // Initial ATMega328P TWI/I2C Peripheral
-  TWSR = 0x00;         // Select Prescaler of 1
-  // SCL frequency = 11059200 / (16 + 2 * 48 * 1) = 98.743 kHz
-  TWBR = 0x30;        // 48 Decimal
+  // Set I2C clock prescale to 1 (no prescaling)
+  TWSR = 0x00;
+
+  // Set SCL frequency in TWI bit register. If no prescaling,
+  //      I2C_SCL = F_CPU/(16 + 2*TWBR).
+  // See ATMega*8 datasheet section 22.5.2.
+  // If SCL = 100 kHz and F_CPU = 16 MHz, then TWBR = 72.
+  TWBR = ((F_CPU/I2C_SCL) - 16)/2;
 }
 
-unsigned char i2c_transmit(unsigned char type)
+uint8_t i2c_transmit(uint8_t type)
 {
   switch (type)
   {
@@ -32,9 +35,9 @@ unsigned char i2c_transmit(unsigned char type)
   return (TWSR & 0xF8);
 }
 
-char i2c_start(unsigned int dev_id, unsigned int dev_addr, unsigned char rw_type)
+char i2c_start(uint8_t dev_addr, uint8_t rw_type)
 {
-  unsigned char twi_status;
+  uint8_t twi_status;
 
   for (uint8_t n = 0; n < I2C_MAX_TRIES; n++)
   {
@@ -47,11 +50,12 @@ char i2c_start(unsigned int dev_id, unsigned int dev_addr, unsigned char rw_type
     if ((twi_status != TW_START) && (twi_status != TW_REP_START))
       return -1;
 
-    // Send slave address (SLA_W)
-    TWDR = (dev_id & 0xF0) | (dev_addr & 0x0E) | rw_type;
+    // Send 7-bit slave address (SLA_W) and R/W direction
+    // http://www.avrbeginners.net/architecture/twi/twi.html#addressing
+    TWDR = (dev_addr & 0xFE) | rw_type;
 
     // Transmit I2C Data
-    twi_status=i2c_transmit(I2C_DATA);
+    twi_status = i2c_transmit(I2C_DATA);
 
     // Check the TWSR status
     if ((twi_status == TW_MT_SLA_NACK) || (twi_status == TW_MT_ARB_LOST))
@@ -80,9 +84,36 @@ char i2c_write(char data)
   return 0;
 }
 
+void i2c_write_byte(uint8_t dev_addr, char data)
+{
+  // Start the I2C write transmission
+  i2c_start(dev_addr, TW_WRITE);
+
+  // Write data
+  i2c_write(data);
+
+  // Stop I2C Transmission
+  i2c_stop();
+}
+
+void i2c_write_byte_to_register(uint8_t dev_addr, uint8_t reg_addr, char data)
+{
+  // Start the I2C write transmission
+  i2c_start(dev_addr, TW_WRITE);
+
+  // Write register address
+  i2c_write(reg_addr);
+
+  // Write data to register
+  i2c_write(data);
+
+  // Stop I2C Transmission
+  i2c_stop();
+}
+
 char i2c_read(char *data, char ack_type)
 {
-  unsigned char twi_status;
+  uint8_t twi_status;
 
   if (ack_type)
   {
@@ -103,4 +134,27 @@ char i2c_read(char *data, char ack_type)
   *data = TWDR;
 
   return 0;
+}
+
+uint8_t i2c_read_byte_from_register(uint8_t dev_addr, uint8_t reg_addr)
+{
+  char data;
+
+  // Start the I2C write transmission
+  i2c_start(dev_addr, TW_WRITE);
+
+  // Then send register address
+  i2c_write(reg_addr);
+
+  // Stop I2C Transmission
+  i2c_stop();
+
+  // Re-Start the I2C Read Transmission
+  i2c_start(dev_addr, TW_READ);
+  i2c_read(&data, 0); // 0 for NACK
+
+  // Stop I2C Transmission
+  i2c_stop();
+
+  return data;
 }
