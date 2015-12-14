@@ -31,12 +31,12 @@
 #define T_REF        300          // Vertical position (PID target value)
 #define T_INIT       900          // Starting position (pendulum at rest)
 
-// Motor control via TI SN754410 driver
+// Motor control via Infineon TLE5206
 #define MOTOR_DDR   DDRD
 #define MOTOR_PORT  PORTD
-#define MOTOR_EN    4
-#define MOTOR_1A    5
-#define MOTOR_2A    6
+#define MOTOR_1     5
+#define MOTOR_2     6
+#define MOTOR_EF    4 // Error flag pin (TODO)
 #define MAX_SPEED   255
 #define RAMP_STEP   2
 
@@ -170,6 +170,19 @@ void swing()
   }
 }
 
+uint8_t x_in_bounds()
+{
+  if (xcart < 0 || xcart > X_MAX)
+    return 0;
+  return 1;
+}
+
+void disable_cart()
+{
+  PORTB |= (1 << 5);
+  MOTOR_PORT = 0;
+}
+
 void indicate_angle()
 {
   if (abs(error) > 50)
@@ -271,7 +284,7 @@ ISR(T_ENC_VECT)
   }
 }
 
-int main()
+void setup()
 {
   // Configure encoder pins and interrupt system
   sei();
@@ -299,40 +312,58 @@ int main()
   // OCR1A = 12500;            // Trigger interrupt every 200 ms
   OCR1A = 6250;            // Trigger interrupt every 100 ms
 
-  // Enable motor!
-  MOTOR_DDR  |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
-  MOTOR_PORT |= ((1 << MOTOR_EN) | (1 << MOTOR_1A) | (1 << MOTOR_2A));
+  // Enable motor
+  // IN1 IN2 OUT1 OUT2   Comments (IN1,2 = MOTOR_1,2)
+  //   L   L    L    L   Brake; both low side transistors turned ON
+  //   L   H    L    H   Motor turns counterclockwise
+  //   H   L    H    L   Motor turns clockwise
+  //   H   H    H    H   Brake; both high side transistors turned-ON
+  MOTOR_DDR  |= ((1 << MOTOR_1) | (1 << MOTOR_2));
+  MOTOR_PORT |= ((1 << MOTOR_1) | (1 << MOTOR_2));
 
   // Raise PB2-5 to output mode for indicator LEDs
   DDRB |= 0b00111100;
+}
 
+int main()
+{
+  uint16_t   dx = 0;
   uint8_t speed = 0;
+
+  setup();
 
   // Move cart out from its initial position at the far left side, x = 0,
   // to a point near the center.
-  move(1500, MAX_SPEED, RAMP_STEP);
+  move(1600, MAX_SPEED, RAMP_STEP);
 
   while (1)
   {
     // Try to invert pendulum with swing-drive
-    // swing();
+    swing();
     indicate_angle();
 
     // PID loop
     while (abs(error) < 40)
     {
       PORTB |= (1 << 4);
-      speed = MIN(40*abs(error) + 200*abs(omega) + 10*errsum, MAX_SPEED);
-      move(ROUNDED_DIV(4*error - 2*omega + errsum, 10), speed, 0);
+      // speed = MIN(50*abs(error) + 100*abs(omega) + 10*errsum, MAX_SPEED);
+      // move(ROUNDED_DIV(5*error - 1*omega + errsum, 10), speed, 0);
+      // dx = ROUNDED_DIV(4*error - 2*omega + errsum, 10);
+      dx = 4*error;
+      speed = 255;
+      move(dx, speed, 0);
+
+      indicate_angle();
+
+      if (!x_in_bounds())
+        disable_cart();
     }
     PORTB &= ~(1 << 4);
 
-    // Software endstops
-    if (xcart < 0 || xcart > X_MAX)
+    if (!x_in_bounds())
     {
-      PORTB |= (1 << 5);
-      MOTOR_PORT &= ~(1 << MOTOR_EN);
-      break;
+      disable_cart();
+      break; // Time for a manual reset
     }
   }
 
