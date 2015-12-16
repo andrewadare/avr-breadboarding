@@ -6,23 +6,21 @@ int main()
 {
   init_lcd();
 
-  uint8_t backlit = 1;
-
   while (1)
   {
     lcd_clrscr();
 
     lcd_goto(0, 0);
-    lcd_puts("Line 1", backlit);
+    lcd_puts("Line 1");
 
     lcd_goto(1, 0);
-    lcd_puts("Line 2", backlit);
+    lcd_puts("Line 2");
 
     lcd_goto(2, 0);
-    lcd_puts("Line 3", backlit);
+    lcd_puts("Line 3");
 
     lcd_goto(3, 0);
-    lcd_puts("Line 4", backlit);
+    lcd_puts("Line 4");
 
     _delay_ms(500);
 
