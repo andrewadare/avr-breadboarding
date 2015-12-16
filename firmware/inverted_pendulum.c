@@ -29,7 +29,11 @@
 #define TMIN 80
 #define NRAMP 16
 
-// Encoder for pendulum angle - theta coordinate
+// Encoder for pendulum angle - theta coordinate.
+// The interval for this 1200-tick encoder is defined to be -599:600, where
+// theta = 0 is the vertical (target) position, increasing CCW. It may be
+// useful to think of T_INIT as a proxy for pi.
+#define T_INIT       600          // Starting position (pendulum at rest)
 #define T_ENC_PORT   PORTC        // Encoder port write  
 #define T_ENC_PIN    PINC         // Encoder port read
 #define T_ENC_VECT   PCINT1_vect  // Pin-change interrupt vector
@@ -37,18 +41,15 @@
 #define T_ENC_PCIMSK PCMSK1       // PCI mask register
 #define T_ENC_A      0            // T_ENC_PORT pin for Ch A (Arduino A0)
 #define T_ENC_B      1            // T_ENC_PORT pin for Ch B (Arduino A1)
-#define T_MAX        1199         // Encoder period (pulses/rev) - 1
-#define T_REF        0            // Vertical position (PID target value)
-#define T_INIT       600          // Starting position (pendulum at rest)
 
 #define CURR_ROT 0                // Bit 0 for current rotation direction
 #define PREV_ROT 1                // Bit 1 for previous rotation direction
-#define CW 0                      // Next 4 definitions encode prev + current
-#define CCW 1                     // rotation directions.
-#define CW_TO_CCW 2
-#define CCW_TO_CW 3
+#define CW 0                      // Decreasing theta (omega < 0)
+#define CCW 1                     // Increasing theta (omega > 0)
+#define CW_TO_CCW 2               // Max left swing (omega = 0)
+#define CCW_TO_CW 3               // Max right swing (omega = 0)
 
-volatile uint16_t theta = T_INIT; // Pendulum angle in encoder ticks
+volatile  int16_t theta = T_INIT; // Pendulum angle in encoder ticks
 volatile  int16_t errsum = 0;     // Accumulated error for PID
 volatile  int16_t omega = 0;      // Angular velocity of pendulum
 volatile uint8_t rotreg = 0;      // Register to store pendulum rotation state
@@ -155,18 +156,18 @@ void swing()
   {
     if (rotation_state() == CW_TO_CCW)
     {
-      if (abs(theta) < 100)
+      if (theta < T_INIT/6)
         go(ONE_REV);
-      else if (abs(theta) < 200)
+      else if (theta < T_INIT/3)
         go(3*ONE_REV/4);
       else
         go(ONE_REV/2);
     }
     if (rotation_state() == CCW_TO_CW)
     {
-      if (abs(theta) < 100)
+      if (theta > -T_INIT/6)
         go(-ONE_REV);
-      else if (abs(theta) < 200)
+      else if (theta > -T_INIT/3)
         go(-3*ONE_REV/4);
       else
         go(-ONE_REV/2);
@@ -287,24 +288,20 @@ ISR(T_ENC_VECT)
   qcurr = ((T_ENC_PIN & (1 << T_ENC_A)) | (T_ENC_PIN & (1 << T_ENC_B)));
   encval += lut[qprev][qcurr];
 
-  if (encval > 3) // Theta increasing (CCW rotation)
+  if (encval < -3) // Theta increasing (CCW rotation)
   {
     // Store prev direction and set CURR_ROT bit high
     rotreg <<= 1;
     rotreg |= (1 << CURR_ROT);
-
-    theta = (theta < T_MAX) ? theta + 1 : 0;
+    theta = (theta == T_INIT) ? -T_INIT + 1 : theta + 1;
     encval = 0;
-    // error = T_REF - theta;
   }
-  else if (encval < -3) // Theta decreasing (CW rotation)
+  else if (encval > 3) // Theta decreasing (CW rotation)
   {
     // Store prev direction and keep CURR_ROT bit low
     rotreg <<= 1;
-
-    theta = (theta > 0) ? theta - 1 : T_MAX;
+    theta = (theta == -T_INIT + 1) ? T_INIT : theta - 1;
     encval = 0;
-    // error = T_REF - theta;
   }
 }
 
@@ -314,7 +311,15 @@ ISR(T_ENC_VECT)
 ISR(TIMER1_COMPA_vect)
 {
   static uint16_t prev_theta = T_INIT;
+
+  // Compute angular difference for this time step, respecting periodicity
   omega = theta - prev_theta;
+
+  if (omega > T_INIT)
+    omega -= 2*T_INIT;
+  if (omega < -T_INIT)
+    omega += 2*T_INIT;
+
   prev_theta = theta;
 
   if (abs(theta) < 50)
