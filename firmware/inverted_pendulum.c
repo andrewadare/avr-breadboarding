@@ -11,18 +11,23 @@
 #define MAX(a,b) ((a) > (b) ? a : b)
 
 // Definitions for x limit stops
-#define LIM_DDR     DDRB        // x limit data direction register  
-#define LIM_PORT    PORTB       // x limit port write  
-#define LIM_PIN     PINB        // x limit port read
-#define LIM_VECT    PCINT0_vect // Pin-change interrupt vector
-#define LIM_BANK    PCIE0       // Pin group for PCICR
-#define LIM_PCIMSK  PCMSK0      // PCI mask register
-#define LIM_L       0           // LIM_PORT pin for left stop (Arduino 8)
-#define LIM_R       1           // LIM_PORT pin for right stop (9)
-#define LED_L       2           // LED indicator for left stop (10)
-#define LED_R       3           // LED indicator for right stop (11)
+#define LIM_DDR     DDRB          // x limit data direction register  
+#define LIM_PORT    PORTB         // x limit port write  
+#define LIM_PIN     PINB          // x limit port read
+#define LIM_VECT    PCINT0_vect   // Pin-change interrupt vector
+#define LIM_BANK    PCIE0         // Pin group for PCICR
+#define LIM_PCIMSK  PCMSK0        // PCI mask register
+#define LIM_L       0             // LIM_PORT pin for left stop (Arduino 8)
+#define LIM_R       1             // LIM_PORT pin for right stop (9)
+#define LED_L       2             // LED indicator for left stop (10)
+#define LED_R       3             // LED indicator for right stop (11)
 #define X_MIN       0
 #define X_MAX       1400
+
+// Stepper ramping parameters (pulse widths and ramp length)
+#define TMAX 240
+#define TMIN 80
+#define NRAMP 16
 
 // Encoder for pendulum angle - theta coordinate
 #define T_ENC_PORT   PORTC        // Encoder port write  
@@ -33,26 +38,21 @@
 #define T_ENC_A      0            // T_ENC_PORT pin for Ch A (Arduino A0)
 #define T_ENC_B      1            // T_ENC_PORT pin for Ch B (Arduino A1)
 #define T_MAX        1199         // Encoder period (pulses/rev) - 1
-#define T_REF        300          // Vertical position (PID target value)
-#define T_INIT       900          // Starting position (pendulum at rest)
+#define T_REF        0            // Vertical position (PID target value)
+#define T_INIT       600          // Starting position (pendulum at rest)
 
-#define CURR_ROT 0        // Bit 0 for current rotation direction
-#define PREV_ROT 1        // Bit 1 for previous rotation direction
-#define CW 0              // Next 4 definitions encode prev + current
-#define CCW 1             // rotation directions.
+#define CURR_ROT 0                // Bit 0 for current rotation direction
+#define PREV_ROT 1                // Bit 1 for previous rotation direction
+#define CW 0                      // Next 4 definitions encode prev + current
+#define CCW 1                     // rotation directions.
 #define CW_TO_CCW 2
 #define CCW_TO_CW 3
 
-// Stepper ramping parameters (pulse widths and ramp length)
-#define TMAX 240
-#define TMIN 80
-#define NRAMP 16
-
-volatile uint16_t theta = T_INIT;  // Pendulum angle in encoder ticks
-volatile  int16_t error = T_REF - T_INIT;  // Theta error for PID (P)
-volatile  int16_t errsum = 0;      // Accumulated error for PID (I)
-volatile  int16_t omega = 0;       // Angular velocity of pendulum (D)
-volatile uint8_t rotreg = 0;  // Register for storing pendulum rotation state
+volatile uint16_t theta = T_INIT; // Pendulum angle in encoder ticks
+volatile  int16_t errsum = 0;     // Accumulated error for PID
+volatile  int16_t omega = 0;      // Angular velocity of pendulum
+volatile uint8_t rotreg = 0;      // Register to store pendulum rotation state
+volatile uint8_t timer1_tick = 0;
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
 // unchanged (0) given a transition in the encoder Q state (qprev, qcurr).
@@ -82,7 +82,7 @@ void setup()
   PCICR        |= (1 << T_ENC_BANK);
   T_ENC_PCIMSK |= ((1 << T_ENC_A) | (1 << T_ENC_B));
 
-  // Timer 1 configuration - use as timebase for angular velocity
+  // Timer 1 configuration - controls sample rate for angular velocity
   TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
   TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
   TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
@@ -151,22 +151,22 @@ void home_cart()
 
 void swing()
 {
-  if (abs(error) > 50)
+  if (abs(theta) > 50)
   {
     if (rotation_state() == CW_TO_CCW)
     {
-      if (abs(error) < 100)
+      if (abs(theta) < 100)
         go(ONE_REV);
-      else if (abs(error) < 200)
+      else if (abs(theta) < 200)
         go(3*ONE_REV/4);
       else
         go(ONE_REV/2);
     }
     if (rotation_state() == CCW_TO_CW)
     {
-      if (abs(error) < 100)
+      if (abs(theta) < 100)
         go(-ONE_REV);
-      else if (abs(error) < 200)
+      else if (abs(theta) < 200)
         go(-3*ONE_REV/4);
       else
         go(-ONE_REV/2);
@@ -228,10 +228,15 @@ int main()
 
   while (1)
   {
+    if (timer1_tick)
+    {
+      write_x();
+      write_theta();
+      write_omega();
+      timer1_tick = 0;
+    }
+
     check_limits();
-    write_x();
-    write_theta();
-    write_omega();
   }
 
   return 0;
@@ -290,7 +295,7 @@ ISR(T_ENC_VECT)
 
     theta = (theta < T_MAX) ? theta + 1 : 0;
     encval = 0;
-    error = T_REF - theta;
+    // error = T_REF - theta;
   }
   else if (encval < -3) // Theta decreasing (CW rotation)
   {
@@ -299,7 +304,7 @@ ISR(T_ENC_VECT)
 
     theta = (theta > 0) ? theta - 1 : T_MAX;
     encval = 0;
-    error = T_REF - theta;
+    // error = T_REF - theta;
   }
 }
 
@@ -312,11 +317,10 @@ ISR(TIMER1_COMPA_vect)
   omega = theta - prev_theta;
   prev_theta = theta;
 
-  if (abs(error) < 50)
-  {
-    errsum += error;
-    errsum = MIN(error, 100);
-  }
+  if (abs(theta) < 50)
+    errsum += theta;
   else
     errsum = 0;
+
+  timer1_tick = 1;
 }
