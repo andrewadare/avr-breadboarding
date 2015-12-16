@@ -35,7 +35,8 @@ void send_byte(uint8_t rs, uint8_t data, uint8_t backlit);
 void lcd_write(uint8_t data, uint8_t backlit);
 void lcd_command(uint8_t cmd);
 void init_lcd();
-void lcd_puts(const char *s, uint8_t backlit);
+void lcd_puts(const char *s);
+void lcd_puts_dark(const char *s); // Backlight off
 void lcd_goto(uint8_t line, uint8_t column); // Use e.g. LINE2 as 1st arg
 void lcd_clrscr();
 void lcd_home();

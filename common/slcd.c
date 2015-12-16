@@ -77,12 +77,20 @@ void init_lcd()
   lcd_command(0b00000110);
 }
 
-void lcd_puts(const char *s, uint8_t backlit)
+void lcd_puts(const char *s)
 {
   char c;
 
   while ((c = *s++))
-    lcd_write(c, backlit);
+    lcd_write(c, 1);
+}
+
+void lcd_puts_dark(const char *s)
+{
+  char c;
+
+  while ((c = *s++))
+    lcd_write(c, 0);
 }
 
 // This implements the "Set DDRAM address" instruction.
