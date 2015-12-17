@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "A4988driver.h"
-#include "slcd.h"
+// #include "slcd.h"
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define MAX(a,b) ((a) > (b) ? a : b)
@@ -21,8 +21,6 @@
 #define LIM_R       1             // LIM_PORT pin for right stop (9)
 #define LED_L       2             // LED indicator for left stop (10)
 #define LED_R       3             // LED indicator for right stop (11)
-#define X_MIN       0
-#define X_MAX       1400
 
 // Stepper ramping parameters (pulse widths and ramp length)
 #define TMAX 240
@@ -51,8 +49,9 @@
 
 volatile  int16_t theta = T_INIT; // Pendulum angle in encoder ticks
 volatile  int16_t errsum = 0;     // Accumulated error for PID
-volatile  int16_t omega = 0;      // Angular velocity of pendulum
+volatile  int16_t omega = 0;      // Angular velocity (actually d(theta))
 volatile uint8_t rotreg = 0;      // Register to store pendulum rotation state
+volatile  int16_t x_max = 12345;  // Upper x limit - set during orientation
 volatile uint8_t timer1_tick = 0;
 
 // Lookup table to increment position (+1), decrement it (-1), or leave it
@@ -87,10 +86,11 @@ void setup()
   TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
   TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
   TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
-  OCR1A = 6250;            // Interrupt every 100 ms
+  OCR1A = 3125;            // Interrupt every 50 ms
+  // OCR1A = 6250;            // Interrupt every 100 ms
 
   stepper_setup();
-  init_lcd();
+  // init_lcd();
   sei();
 }
 
@@ -113,18 +113,9 @@ uint8_t rotation_state()
   return 99;
 }
 
-
-void go(int16_t n)
+// Travel n steps left (n<0) or right (n>0).
+void go_unchecked(int16_t n)
 {
-  int16_t newx = 0;
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-  {
-    newx = n + stepper_position();
-  }
-
-  if (newx < 0 || newx > X_MAX)
-    return;
-
   uint16_t nsteps = n;
   if (n >= 0)
     setdir_cw(); // right
@@ -133,46 +124,109 @@ void go(int16_t n)
     setdir_ccw(); // left
     nsteps = -n;
   }
+  // enable_stepper();
+  // for (uint8_t i=0; i<255; i++) {;}
   ramp_move(nsteps, TMAX, TMIN, NRAMP);
+  // disable_stepper();
 }
 
-void home_cart()
+// Travel n steps if destination is in bounds.
+void go(int16_t n)
 {
-  lcd_goto(1, 0);
-  lcd_puts("Homing...");
+  int16_t newx = 0;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+  {
+    newx = n + stepper_position();
+  }
 
-  while bit_is_clear(LIM_PORT, LED_L)
-    go(-1);
-  while bit_is_set(LIM_PORT, LED_L)
-    go(ONE_REV/8);
+  if (newx < 0 || newx > x_max)
+    return;
+
+  go_unchecked(n);
+}
+
+void go_to(int16_t x)
+{
+  go(x - stepper_position());
+}
+
+// Find x boundaries using limit stops and center cart
+void initialize_cart()
+{
+  // lcd_goto(1, 0);
+  // lcd_puts("Finding left edge");
+  while bit_is_clear(LIM_PORT, LED_L) // Move cautiously to left limit stop
+    go_unchecked(-1);
+  while bit_is_set(LIM_PORT, LED_L)   // Rebound to create a margin
+    go_unchecked(ONE_REV/8);
   LIM_PORT &= ~(1 << LED_L);
+  set_stepper_position(0);            // Zero out stepper counter
 
-  set_stepper_position(0);
+  // lcd_goto(1, 0);
+  // lcd_puts("Finding right edge");
+  while bit_is_clear(LIM_PORT, LED_R)
+    go_unchecked(1);
+  while bit_is_set(LIM_PORT, LED_R)
+    go_unchecked(-ONE_REV/8);
+  LIM_PORT &= ~(1 << LED_R);
+  x_max = stepper_position();
+
+  // lcd_goto(1, 0);
+  // lcd_puts("                  ");
+  // char s[6] = "";
+  // itoa(x_max, s, 10);
+  // lcd_goto(1, 0);
+  // lcd_puts("xmin = 0");
+  // lcd_goto(2, 0);
+  // lcd_puts("xmax = ");
+  // lcd_puts(s);
+
+  // Set up for swing routine
+  _delay_ms(500);
+  go_to(x_max/4);
 }
 
 void swing()
 {
-  if (abs(theta) > 50)
+  if (abs(theta) < 50)
+    return;
+
+  if (rotation_state() == CW_TO_CCW)
   {
-    if (rotation_state() == CW_TO_CCW)
-    {
-      if (theta < T_INIT/6)
-        go(ONE_REV);
-      else if (theta < T_INIT/3)
-        go(3*ONE_REV/4);
-      else
-        go(ONE_REV/2);
-    }
-    if (rotation_state() == CCW_TO_CW)
-    {
-      if (theta > -T_INIT/6)
-        go(-ONE_REV);
-      else if (theta > -T_INIT/3)
-        go(-3*ONE_REV/4);
-      else
-        go(-ONE_REV/2);
-    }
+    if (theta < T_INIT/6)
+      go(x_max/2);
+    else if (theta < T_INIT/3)
+      go(x_max/3);
+    else
+      go(x_max/4);
   }
+  if (rotation_state() == CCW_TO_CW)
+  {
+    if (theta > -T_INIT/6)
+      go(-x_max/2);
+    else if (theta > -T_INIT/3)
+      go(-x_max/3);
+    else
+      go(-x_max/4);
+  }
+  // if (rotation_state() == CW_TO_CCW)
+  // {
+  //   if (theta < T_INIT/6)
+  //     go(2*ONE_REV);
+  //   else if (theta < T_INIT/3)
+  //     go(3*ONE_REV/2);
+  //   else
+  //     go(ONE_REV);
+  // }
+  // if (rotation_state() == CCW_TO_CW)
+  // {
+  //   if (theta > -T_INIT/6)
+  //     go(-2*ONE_REV);
+  //   else if (theta > -T_INIT/3)
+  //     go(-3*ONE_REV/2);
+  //   else
+  //     go(-ONE_REV);
+  // }
 }
 
 void check_limits()
@@ -185,7 +239,7 @@ void check_limits()
     go(-ONE_REV/8);
   LIM_PORT &= ~(1 << LED_R);
 }
-
+/*
 void write_x()
 {
   char s[6] = "";
@@ -218,25 +272,36 @@ void write_omega()
     lcd_puts(" ");
   lcd_puts(s);
 }
-
+*/
 int main()
 {
   setup();
-  lcd_clrscr();
-  lcd_goto(0, 0);
-  lcd_puts(" INVERTED PENDULUM ");
-  // home_cart();
+  // lcd_clrscr();
+  // lcd_goto(0, 0);
+  // lcd_puts(" INVERTED PENDULUM ");
+
+  initialize_cart();
 
   while (1)
   {
-    if (timer1_tick)
+    while (abs(theta) > 0 && abs(theta) < ONE_REV/8)
     {
-      write_x();
-      write_theta();
-      write_omega();
-      timer1_tick = 0;
+      go(-1.5*theta - 1.5*omega - 1.1*errsum);
+      // go(-1.25*theta - 1.5*omega - 1.1*errsum);
+      // go(-1.75*theta - 1.5*omega - 1.25*errsum);
+      // go(-4*theta - 3*omega - 3.5*errsum); // With timer 1 sampling at 10 Hz
+      check_limits();
     }
 
+    // if (timer1_tick)
+    // {
+    //   write_x();
+    //   write_theta();
+    //   write_omega();
+    //   timer1_tick = 0;
+    // }
+
+    // swing();
     check_limits();
   }
 
@@ -317,7 +382,7 @@ ISR(TIMER1_COMPA_vect)
 
   if (omega > T_INIT)
     omega -= 2*T_INIT;
-  if (omega < -T_INIT)
+  else if (omega < -T_INIT)
     omega += 2*T_INIT;
 
   prev_theta = theta;
