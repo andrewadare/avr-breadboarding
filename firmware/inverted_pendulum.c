@@ -84,10 +84,11 @@ void setup()
 
   // Timer 1 configuration - controls sample rate for angular velocity
   TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
-  TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
+  // TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
+  TCCR1B |= ((1 << CS11) | (1 << CS10));   // CPU/64 (table 16-5) --> 250 kHz
   TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
-  OCR1A = 3125;            // Interrupt every 50 ms
-  // OCR1A = 6250;            // Interrupt every 100 ms
+  // OCR1A = 6250; // Sample every 25 ms (40 Hz)
+  OCR1A = 12500; // every 50 ms (20 Hz)
 
   stepper_setup();
   // init_lcd();
@@ -301,7 +302,7 @@ int main()
     //   timer1_tick = 0;
     // }
 
-    // swing();
+    swing();
     check_limits();
   }
 
