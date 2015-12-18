@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "A4988driver.h"
-// #include "slcd.h"
+#include "slcd.h"
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define MAX(a,b) ((a) > (b) ? a : b)
@@ -28,10 +28,12 @@
 #define NRAMP 16
 
 // Encoder for pendulum angle - theta coordinate.
-// The interval for this 1200-tick encoder is defined to be -599:600, where
-// theta = 0 is the vertical (target) position, increasing CCW. It may be
-// useful to think of T_INIT as a proxy for pi.
-#define T_INIT       600          // Starting position (pendulum at rest)
+// The increments of theta are encoder ticks, where theta = 0 is the vertical 
+// (target) position, increasing CCW. The pendulum begins hanging at rest, at
+// position T_INIT. The angular interval is thus defined as -T_INIT+1:T_INIT.
+// T_INIT is half the number of encoder counts/revolution, and an integer-valued
+// proxy for pi.
+#define T_INIT       900          // Starting angle (pendulum hanging at rest)
 #define T_ENC_PORT   PORTC        // Encoder port write  
 #define T_ENC_PIN    PINC         // Encoder port read
 #define T_ENC_VECT   PCINT1_vect  // Pin-change interrupt vector
@@ -84,14 +86,13 @@ void setup()
 
   // Timer 1 configuration - controls sample rate for angular velocity
   TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
-  // TCCR1B |= (1 << CS12);   // Prescale to CPU/256 (table 16-5) --> 62.5 kHz
   TCCR1B |= ((1 << CS11) | (1 << CS10));   // CPU/64 (table 16-5) --> 250 kHz
   TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
   // OCR1A = 6250; // Sample every 25 ms (40 Hz)
   OCR1A = 12500; // every 50 ms (20 Hz)
 
   stepper_setup();
-  // init_lcd();
+  init_lcd();
   sei();
 }
 
@@ -210,24 +211,6 @@ void swing()
     else
       go(-x_max/4);
   }
-  // if (rotation_state() == CW_TO_CCW)
-  // {
-  //   if (theta < T_INIT/6)
-  //     go(2*ONE_REV);
-  //   else if (theta < T_INIT/3)
-  //     go(3*ONE_REV/2);
-  //   else
-  //     go(ONE_REV);
-  // }
-  // if (rotation_state() == CCW_TO_CW)
-  // {
-  //   if (theta > -T_INIT/6)
-  //     go(-2*ONE_REV);
-  //   else if (theta > -T_INIT/3)
-  //     go(-3*ONE_REV/2);
-  //   else
-  //     go(-ONE_REV);
-  // }
 }
 
 void check_limits()
@@ -240,7 +223,7 @@ void check_limits()
     go(-ONE_REV/8);
   LIM_PORT &= ~(1 << LED_R);
 }
-/*
+
 void write_x()
 {
   char s[6] = "";
@@ -273,13 +256,13 @@ void write_omega()
     lcd_puts(" ");
   lcd_puts(s);
 }
-*/
+
 int main()
 {
   setup();
-  // lcd_clrscr();
-  // lcd_goto(0, 0);
-  // lcd_puts(" INVERTED PENDULUM ");
+  lcd_clrscr();
+  lcd_goto(0, 0);
+  lcd_puts(" INVERTED PENDULUM ");
 
   initialize_cart();
 
@@ -287,7 +270,9 @@ int main()
   {
     while (abs(theta) > 0 && abs(theta) < ONE_REV/8)
     {
-      go(-1.5*theta - 1.5*omega - 1.1*errsum);
+      go(-1.75*theta - 1.8*omega - 3.0*errsum);
+      // go(-1.5*theta - 1.5*omega - 2.5*errsum);
+      // go(-1.5*theta - 1.5*omega - 1.9*errsum);
       // go(-1.25*theta - 1.5*omega - 1.1*errsum);
       // go(-1.75*theta - 1.5*omega - 1.25*errsum);
       // go(-4*theta - 3*omega - 3.5*errsum); // With timer 1 sampling at 10 Hz
