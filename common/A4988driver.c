@@ -5,7 +5,8 @@ volatile int16_t position = 0;
 
 void stepper_setup()
 {
-  STEPPER_DDR |= ((1 << STEP_PIN) | (1 << DIR_PIN));
+  // Enable the three control pins for output, but leave them low.
+  STEPPER_DDR |= ((1 << STEP_PIN) | (1 << DIR_PIN) | (1 << STEPPER_ENABLE_PIN));
 
   // Configure timer x to tick with a 4us period, where x is 0 or 2. Interrupt
   // is enabled by TIMSKx and is triggered every OCRxA*4 us.
@@ -23,6 +24,16 @@ void stepper_setup()
 #endif
 
   sei();
+}
+
+void enable_stepper()
+{
+  STEPPER_PORT &= ~(1 << STEPPER_ENABLE_PIN);
+}
+
+void disable_stepper()
+{
+  STEPPER_PORT |= (1 << STEPPER_ENABLE_PIN);
 }
 
 void set_stepper_position(int16_t p)

@@ -11,6 +11,8 @@
 #include "stepper_config.h"
 
 void stepper_setup();
+void enable_stepper();
+void disable_stepper();
 void setdir_cw();
 void setdir_ccw();
 void step(uint16_t n, uint8_t t);
