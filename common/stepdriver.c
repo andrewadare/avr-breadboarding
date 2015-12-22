@@ -7,7 +7,7 @@ void stepper_setup()
   // Enable the control pins for output, but leave them low.
   STEPPER_DDR |= ((1 << DIR_PIN) | (1 << STEPPER_ENABLE_PIN));
 
-  // Configure timer x to tick with a 4us period, where x is 0 or 2.
+  // Configure timer x to tick at 250 kHz, where x is 0 or 2.
   // Toggling occurs every OCRxA*4 us.
   // Square waves are generated, so the pulse period is twice the pulse width.
 #ifdef USE_TIMER_0_FOR_STEPPER
