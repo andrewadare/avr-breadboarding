@@ -1,14 +1,15 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
-#include <util/atomic.h>
 #include <stdlib.h>
 #include <string.h>
-#include "A4988driver.h"
-#include "slcd.h"
+#include "stepdriver.h"
+// #include "slcd.h"
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define MAX(a,b) ((a) > (b) ? a : b)
+
+#define ONE_REV 400               // Stepper detents/rev (0.9 deg/step)
 
 // Definitions for x limit stops
 #define LIM_DDR     DDRB          // x limit data direction register  
@@ -24,11 +25,14 @@
 
 // Stepper ramping parameters (pulse widths and ramp length)
 #define TMAX 240
-#define TMIN 80
-#define NRAMP 16
+#define TMIN 60
+#define NRAMP 18
+// #define TMAX 240
+// #define TMIN 80
+// #define NRAMP 16
 
 // Encoder for pendulum angle - theta coordinate.
-// The increments of theta are encoder ticks, where theta = 0 is the vertical 
+// The increments of theta are encoder ticks, where theta = 0 is the vertical
 // (target) position, increasing CCW. The pendulum begins hanging at rest, at
 // position T_INIT. The angular interval is thus defined as -T_INIT+1:T_INIT.
 // T_INIT is half the number of encoder counts/revolution, and an integer-valued
@@ -71,7 +75,8 @@ const volatile int8_t lut[4][4] =
 
 void setup()
 {
-  // Stepper pins and parameters are defined in stepper_config.h
+  // Stepper pins and parameters are defined in stepdriver.h. At the moment:
+  // STEP_PIN is PD3 (Uno 3) and DIR_PIN is PD4 (Uno pins 3,4)
 
   // Limit stop configuration
   LIM_DDR     = ((1 << LED_L) | (1 << LED_R)); // LED pins to output mode
@@ -88,11 +93,14 @@ void setup()
   TCCR1B |= (1 << WGM12);  // CTC mode (table 16-4)
   TCCR1B |= ((1 << CS11) | (1 << CS10));   // CPU/64 (table 16-5) --> 250 kHz
   TIMSK1 |= (1 << OCIE1A); // Enable output compare interrupt
+  // OCR1A = 2500; // every 10 ms (100 Hz)
   // OCR1A = 6250; // Sample every 25 ms (40 Hz)
-  OCR1A = 12500; // every 50 ms (20 Hz)
+  OCR1A = 8000; // Sample every 40 ms (25 Hz)
+  // OCR1A = 12500; // every 50 ms (20 Hz)
+  // OCR1A = 25000; // every 100 ms (10 Hz)
 
   stepper_setup();
-  init_lcd();
+  // init_lcd();
   sei();
 }
 
@@ -135,11 +143,7 @@ void go_unchecked(int16_t n)
 // Travel n steps if destination is in bounds.
 void go(int16_t n)
 {
-  int16_t newx = 0;
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
-  {
-    newx = n + stepper_position();
-  }
+  int16_t newx = n + stepper_position();
 
   if (newx < 0 || newx > x_max)
     return;
@@ -223,7 +227,7 @@ void check_limits()
     go(-ONE_REV/8);
   LIM_PORT &= ~(1 << LED_R);
 }
-
+/*
 void write_x()
 {
   char s[6] = "";
@@ -256,22 +260,28 @@ void write_omega()
     lcd_puts(" ");
   lcd_puts(s);
 }
+*/
 
 int main()
 {
   setup();
-  lcd_clrscr();
-  lcd_goto(0, 0);
-  lcd_puts(" INVERTED PENDULUM ");
+  // lcd_clrscr();
+  // lcd_goto(0, 0);
+  // lcd_puts(" INVERTED PENDULUM ");
 
   initialize_cart();
 
   while (1)
   {
-    while (abs(theta) > 0 && abs(theta) < ONE_REV/8)
+    while (abs(theta) > 0 && abs(theta) < 135)
     {
-      go(-1.75*theta - 1.8*omega - 3.0*errsum);
-      // go(-1.5*theta - 1.5*omega - 2.5*errsum);
+      // 25Hz
+      go(-1.8*theta - 1.75*omega - 1.5*errsum);
+
+      // With 20 Hz sample rate
+      // go(-5.6*theta - 4.8*omega - 7*errsum);
+      // go(-3.6*theta - 2.4*omega - 3.9*errsum);
+      // go(-2.4*theta - 2.0*omega - 3.0*errsum);
       // go(-1.5*theta - 1.5*omega - 1.9*errsum);
       // go(-1.25*theta - 1.5*omega - 1.1*errsum);
       // go(-1.75*theta - 1.5*omega - 1.25*errsum);
@@ -355,8 +365,6 @@ ISR(T_ENC_VECT)
     encval = 0;
   }
 }
-
-// ISR(TIMER2_COMPA_vect) in the A4988driver library is used for stepper pulsing
 
 // Update angular velocity at a rate controlled by Timer 1 and OCR1A
 ISR(TIMER1_COMPA_vect)
