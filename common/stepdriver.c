@@ -13,7 +13,6 @@ void stepper_setup()
 #ifdef USE_TIMER_0_FOR_STEPPER
   TCCR0A |= (1 << WGM01);                  // Timer 0 to CTC mode
   TCCR0B |= ((1 << CS01) | (1 << CS00));   // Prescale to F_CPU/64
-  OCR0A = OCR0B = 255;                     // Init to max (~1ms) pulse width
   TCCR0A |= (1 << COM0B0);  // Toggle OC0B/PD5 when TCNT0 == OCR0B. Table 15-5
   TCCR0A |= (1 << COM0A0);  // Toggle OC0A/PD6 when TCNT0 == OCR0A. Table 15-2
 #endif
@@ -21,10 +20,12 @@ void stepper_setup()
 #ifdef USE_TIMER_2_FOR_STEPPER
   TCCR2A |= (1 << WGM21);                  // Timer 2 to CTC mode
   TCCR2B |= (1 << CS22);                   // Prescale to F_CPU/64
-  OCR2A = OCR2B = 255;                     // Init to max (~1ms) pulse width
   // TCCR2A |= (1 << COM2A0);  // Toggle OC2A/PB3 when TCNT2 == OCR2A. Table 18-2
   TCCR2A |= (1 << COM2B0);  // Toggle OC2B/PD3 when TCNT2 == OCR2B. Table 18-5
 #endif
+
+  // Initialize output compare value to max (~1ms) pulse width
+  STEPPER_OCR = 255;
 }
 
 void enable_stepper()
@@ -64,14 +65,7 @@ void step(uint16_t n, uint8_t t)
   int8_t one_step = (bit_is_set(STEPPER_PORT, DIR_PIN)) ? 1 : -1;
 
   // Set pin toggle rate to max(t,1).
-#ifdef USE_TIMER_0_FOR_STEPPER
-  OCR0A = t > 1 ? t : 1;
-  OCR0B = OCR0A;
-#endif
-#ifdef USE_TIMER_2_FOR_STEPPER
-  OCR2A = t > 1 ? t : 1;
-  OCR2B = OCR2A;
-#endif
+  STEPPER_OCR = t > 1 ? t : 1;
 
   // Stepping is handled by timer output to STEP_PIN (OCxA).
   // All that is needed here is to enable output, count steps, and disable.

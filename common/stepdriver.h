@@ -1,8 +1,9 @@
 // stepdriver.h
+// For ATMega*8 microcontrollers
 // A mini-library for controlling stepper drivers such as the Allegro A4988,
 // TI DRV8825, or equivalent. This involves controlling 3 pins: direction, step,
 // and (optionally) enable. The step pin is pulsed directly by the timer
-// hardware, which is easy on the CPU and doesn't require interrupts. The
+// hardware, which doesn't occupy the CPU or require interrupts. The
 // tradeoff is inflexibility: only a few pins are designed for direct timer
 // output.
 
@@ -15,6 +16,7 @@
 /*
 // Timer 0 can output pulses to PD5 and/or PD6. Thus only PORTD can be used.
 #define USE_TIMER_0_FOR_STEPPER 1
+#define STEPPER_OCR             OCR0A      // 0A or 0B
 #define STEPPER_PORT            PORTD      // D only
 #define STEPPER_DDR             DDRD       //  "
 #define STEPPER_PIN_REG         PIND       //  "
@@ -26,6 +28,7 @@
 // Timer 2 can pulse to PB3 and/or PD3. Thus either
 // PORTB or PORTD can be used, but STEP_PIN must remain 3.
 #define USE_TIMER_2_FOR_STEPPER 1
+#define STEPPER_OCR             OCR2A      // 2A or 2B
 #define STEPPER_PORT            PORTD
 #define STEPPER_DDR             DDRD
 #define STEPPER_PIN_REG         PIND
