@@ -1,3 +1,7 @@
+# Directories
+untracked
+tmp
+
 # Object files
 *.o
 *.ko
