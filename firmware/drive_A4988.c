@@ -5,32 +5,27 @@
 // Note that Timer0/PORTB or Timer2/PORTD are selected in stepper_config.h, 
 // along with other important parameters (like which pins to wire up!).
 
-#include <avr/io.h>
 #include <util/delay.h>
-#include <avr/interrupt.h>
+#include "stepdriver.h"
 
-#include "A4988driver.h"
+#define ONE_REV 400        // Steps/rev - 0.9 deg / step
 
 int main()
 {
   stepper_setup();
 
   // Stepper ramping parameters (pulse widths and ramp length)
-  uint8_t tmax = 240, tmin = 80, nramp = 16;
+  // uint8_t tmax = 240, tmin = 160, nramp = 8; // Slow
+  // uint8_t tmax = 240, tmin = 80, nramp = 16; // Faster
+  uint8_t tmax = 255, tmin = 55, nramp = 20;    // Really fast!
 
-  setdir_cw(); // right
-  ramp_move(ONE_REV, tmax, tmin, nramp);
-  setdir_ccw(); // left
-  ramp_move(ONE_REV, tmax, tmin, nramp);
-  // while (1)
-  // {
-  //   setdir_cw();
-  //   ramp_move(ONE_REV, tmax, tmin, nramp);
-  //   setdir_ccw();
-  //   _delay_ms(500);
-  //   ramp_move(ONE_REV, tmax, tmin, nramp);
-  //   _delay_ms(500);
-  // }
+  while (1)
+  {
+    setdir_cw();
+    ramp_move(10*ONE_REV, tmax, tmin, nramp);
+    setdir_ccw();
+    ramp_move(10*ONE_REV, tmax, tmin, nramp);
+  }
 
   return 0;
 }

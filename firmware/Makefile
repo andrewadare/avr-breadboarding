@@ -3,7 +3,10 @@
 # For simplicity, this Makefile is shared. Just choose/add a TARGET.
 
 # Name of source file to build, minus the .c
-TARGET = 4digit_7segment
+TARGET = inverted_pendulum
+# TARGET = hbridge
+# TARGET = infineon_bridge
+# TARGET = 4digit_7segment
 # TARGET = smart_pendulum
 # TARGET = i2c_lcd
 # TARGET = quad_encoder
@@ -31,8 +34,9 @@ TARGET = 4digit_7segment
 
 # Port addresses of various arduino devices
 # USBPORT = /dev/cu.usbmodem1451
+USBPORT = /dev/cu.usbserial-00002014
 # USBPORT = /dev/cu.usbserial-00001014
-USBPORT = /dev/cu.wchusbserial1450
+# USBPORT = /dev/cu.wchusbserial1410
 
 # MCU, F_CPU, and BAUD:
 # These can be overridden in user code with #define, but take care to place

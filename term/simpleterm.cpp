@@ -2,7 +2,7 @@
 // Author: Andrew Adare
 //
 // This is a bare-bones serial terminal program to write and read characters
-// interactively over a serial line. It is configured to print only what is 
+// interactively over a serial line. It is configured to print only what is
 // read back from the connected device. To echo keystrokes, remove the noecho().
 // Dependencies:
 // - ncurses for immediate single-keypress input.
@@ -27,7 +27,7 @@ void printPortInfo(const char* porturi);
 int main(int argc, char *argv[])
 {
   int baudrate = 9600;
-  
+
   if (argc < 2)
   {
     listPorts();
@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  // Set baud rate from third argument, if provided. 
+  // Set baud rate from third argument, if provided.
   // TODO add POSIX-style arg parsing, but avoid boost as a dependency.
   // TODO check that it equals one of these:
   // 300, 600, 1200, 1800, 2400, 3600, 4800, 7200, 9600, 14400, 19200, 28800, 38400, 57600, 115200
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     if (br < 300 || br > 115200)
     {
       cout << "Error: invalid baud rate " << br << endl;
-      return -1; 
+      return -1;
     }
     baudrate = br;
   }

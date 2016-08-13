@@ -61,7 +61,7 @@ void setdir_ccw()
 // Take n steps with a pulse width (half-period) t
 void step(uint16_t n, uint8_t t)
 {
-  uint16_t step_counter = 0;
+  uint16_t step_countdown = n;
   int8_t one_step = (bit_is_set(STEPPER_PORT, DIR_PIN)) ? 1 : -1;
 
   // Set pin toggle rate to max(t,1).
@@ -70,13 +70,14 @@ void step(uint16_t n, uint8_t t)
   // Stepping is handled by timer output to STEP_PIN (OCxA).
   // All that is needed here is to enable output, count steps, and disable.
   STEPPER_DDR |= (1 << STEP_PIN);
-  while (step_counter < n)
+  do
   {
     loop_until_bit_is_set(STEPPER_PIN_REG, STEP_PIN);
-    step_counter++;
     position += one_step;
     loop_until_bit_is_clear(STEPPER_PIN_REG, STEP_PIN);
   }
+  while (--step_countdown);
+
   STEPPER_DDR &= ~(1 << STEP_PIN);
 }
 

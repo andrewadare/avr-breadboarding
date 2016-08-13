@@ -31,6 +31,10 @@
 // #define TMIN 80
 // #define NRAMP 16
 
+// #define TMAX 250
+// #define TMIN 60
+// #define NRAMP 19
+
 // Encoder for pendulum angle - theta coordinate.
 // The increments of theta are encoder ticks, where theta = 0 is the vertical
 // (target) position, increasing CCW. The pendulum begins hanging at rest, at
@@ -162,7 +166,7 @@ void initialize_cart()
   // lcd_goto(1, 0);
   // lcd_puts("Finding left edge");
   while bit_is_clear(LIM_PORT, LED_L) // Move cautiously to left limit stop
-    go_unchecked(-1);
+    go_unchecked(-10);
   while bit_is_set(LIM_PORT, LED_L)   // Rebound to create a margin
     go_unchecked(ONE_REV/8);
   LIM_PORT &= ~(1 << LED_L);
@@ -171,7 +175,7 @@ void initialize_cart()
   // lcd_goto(1, 0);
   // lcd_puts("Finding right edge");
   while bit_is_clear(LIM_PORT, LED_R)
-    go_unchecked(1);
+    go_unchecked(10);
   while bit_is_set(LIM_PORT, LED_R)
     go_unchecked(-ONE_REV/8);
   LIM_PORT &= ~(1 << LED_R);
@@ -215,6 +219,21 @@ void swing()
     else
       go(-x_max/4);
   }
+
+  // if (rotation_state() == CW_TO_CCW)
+  // {
+  //   if (theta < T_INIT/6)
+  //     go(3*x_max/4);
+  //   else
+  //     go(x_max/2);
+  // }
+  // if (rotation_state() == CCW_TO_CW)
+  // {
+  //   if (theta > -T_INIT/6)
+  //     go(-3*x_max/4);
+  //   else
+  //     go(-x_max/2);
+  // }
 }
 
 void check_limits()
@@ -271,21 +290,27 @@ int main()
 
   initialize_cart();
 
+  // int16_t pid = 0;
   while (1)
   {
-    while (abs(theta) > 0 && abs(theta) < 135)
+    while (abs(theta) < 135)
     {
-      // 25Hz
-      go(-1.8*theta - 1.75*omega - 1.5*errsum);
+      // if (theta==0)
+      //   continue;
 
-      // With 20 Hz sample rate
-      // go(-5.6*theta - 4.8*omega - 7*errsum);
-      // go(-3.6*theta - 2.4*omega - 3.9*errsum);
-      // go(-2.4*theta - 2.0*omega - 3.0*errsum);
-      // go(-1.5*theta - 1.5*omega - 1.9*errsum);
-      // go(-1.25*theta - 1.5*omega - 1.1*errsum);
-      // go(-1.75*theta - 1.5*omega - 1.25*errsum);
-      // go(-4*theta - 3*omega - 3.5*errsum); // With timer 1 sampling at 10 Hz
+      // Systematic tuning
+      // go(-4*theta);
+      
+      // pid = -1.8*theta - 1.75*omega - 1.5*errsum;
+      
+      // if (abs(pid)<2) 
+      //   continue;
+      // go(pid);
+
+      // 25Hz
+      // go(-1.8*theta - 1.75*omega - 1.5*errsum);
+
+      go(-1*theta - 0*omega - 0.5*errsum);
       check_limits();
     }
 
