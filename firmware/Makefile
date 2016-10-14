@@ -63,7 +63,7 @@ LIBDIR = ../common
 PROGRAMMER_TYPE = usbtiny
 
 # extra arguments to avrdude: baud rate, chip type, -F flag, etc.
-PROGRAMMER_ARGS = 	
+PROGRAMMER_ARGS =
 
 # These executables must be in your PATH
 CC = avr-gcc
@@ -91,13 +91,13 @@ HEADERS=$(SOURCES:.c=.h)
 ## Compilation options, type man avr-gcc if you're curious.
 CPPFLAGS = -DF_CPU=$(F_CPU) -DBAUD=$(BAUD) -I. -I$(LIBDIR)
 CFLAGS = -Os -g -std=gnu99 -Wall
-## Use short (8-bit) data types 
-CFLAGS += -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums 
+## Use short (8-bit) data types
+CFLAGS += -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
 ## Splits up object files per function
-CFLAGS += -ffunction-sections -fdata-sections 
-LDFLAGS = -Wl,-Map,$(TARGET).map 
+CFLAGS += -ffunction-sections -fdata-sections
+LDFLAGS = -Wl,-Map,$(TARGET).map
 ## Optional, but often ends up with smaller code
-LDFLAGS += -Wl,--gc-sections 
+LDFLAGS += -Wl,--gc-sections
 ## Relax shrinks code even more, but makes disassembly messy
 ## LDFLAGS += -Wl,--relax
 ## LDFLAGS += -Wl,-u,vfprintf -lprintf_flt -lm  ## for floating-point printf
@@ -105,7 +105,7 @@ LDFLAGS += -Wl,--gc-sections
 TARGET_ARCH = -mmcu=$(MCU)
 
 ## Explicit pattern rules:
-##  To make .o files from .c files 
+##  To make .o files from .c files
 %.o: %.c $(HEADERS) Makefile
 	 $(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c -o $@ $<;
 
@@ -116,7 +116,7 @@ $(TARGET).elf: $(OBJECTS)
 	 $(OBJCOPY) -j .text -j .data -O ihex $< $@
 
 %.eeprom: %.elf
-	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O ihex $< $@ 
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O ihex $< $@
 
 %.lst: %.elf
 	$(OBJDUMP) -S $< > $@
@@ -124,23 +124,23 @@ $(TARGET).elf: $(OBJECTS)
 ## These targets don't have files named after them
 .PHONY: all disassemble disasm eeprom size clean flash fuses
 
-all: $(TARGET).hex 
+all: $(TARGET).hex
 
 debug:
 	@echo
 	@echo "Source files:"   $(SOURCES)
 	@echo "MCU, F_CPU, BAUD:"  $(MCU), $(F_CPU), $(BAUD)
-	@echo	
+	@echo
 
 # Optionally create listing file from .elf
 # This creates approximate assembly-language equivalent of your code.
-# Useful for debugging time-sensitive bits, 
+# Useful for debugging time-sensitive bits,
 # or making sure the compiler does what you want.
 disassemble: $(TARGET).lst
 
 disasm: disassemble
 
-# Optionally show how big the resulting program is 
+# Optionally show how big the resulting program is
 size:  $(TARGET).elf
 	$(AVRSIZE) -C --mcu=$(MCU) $(TARGET).elf
 
@@ -158,7 +158,7 @@ clean:
 ##########           Flashing code to AVR using avrdude         ##########
 ##########------------------------------------------------------##########
 
-flash: $(TARGET).hex 
+flash: $(TARGET).hex
 	$(AVRDUDE) -c $(PROGRAMMER_TYPE) -p $(MCU) $(PROGRAMMER_ARGS) -U flash:w:$<
 
 ## An alias
@@ -170,7 +170,7 @@ flash_eeprom: $(TARGET).eeprom
 avrdude_terminal:
 	$(AVRDUDE) -c $(PROGRAMMER_TYPE) -p $(MCU) $(PROGRAMMER_ARGS) -nt
 
-## If you've got multiple programmers that you use, 
+## If you've got multiple programmers that you use,
 ## you can define them here so that it's easy to switch.
 ## To invoke, use something like `make flash_arduinoISP`
 flash_usbtiny: PROGRAMMER_TYPE = usbtiny
@@ -182,7 +182,7 @@ flash_usbasp: PROGRAMMER_ARGS =  # USBasp works with no further arguments
 flash_usbasp: flash
 
 flash_arduinoISP: PROGRAMMER_TYPE = avrisp
-flash_arduinoISP: PROGRAMMER_ARGS = -b 19200 -P /dev/ttyACM0 
+flash_arduinoISP: PROGRAMMER_ARGS = -b 19200 -P /dev/ttyACM0
 ## (for windows) flash_arduinoISP: PROGRAMMER_ARGS = -b 19200 -P com5
 flash_arduinoISP: flash
 
@@ -212,23 +212,23 @@ LFUSE = 0x62
 HFUSE = 0xdf
 EFUSE = 0x00
 
-## Generic 
-FUSE_STRING = -U lfuse:w:$(LFUSE):m -U hfuse:w:$(HFUSE):m -U efuse:w:$(EFUSE):m 
+## Generic
+FUSE_STRING = -U lfuse:w:$(LFUSE):m -U hfuse:w:$(HFUSE):m -U efuse:w:$(EFUSE):m
 
-fuses: 
+fuses:
 	$(AVRDUDE) -c $(PROGRAMMER_TYPE) -p $(MCU) \
 	           $(PROGRAMMER_ARGS) $(FUSE_STRING)
 show_fuses:
-	$(AVRDUDE) -c $(PROGRAMMER_TYPE) -p $(MCU) $(PROGRAMMER_ARGS) -nv	
+	$(AVRDUDE) -c $(PROGRAMMER_TYPE) -p $(MCU) $(PROGRAMMER_ARGS) -nv
 
 ## Called with no extra definitions, sets to defaults
-set_default_fuses:  FUSE_STRING = -U lfuse:w:$(LFUSE):m -U hfuse:w:$(HFUSE):m -U efuse:w:$(EFUSE):m 
+set_default_fuses:  FUSE_STRING = -U lfuse:w:$(LFUSE):m -U hfuse:w:$(HFUSE):m -U efuse:w:$(EFUSE):m
 set_default_fuses:  fuses
 
 ## Set the fuse byte for full-speed mode
 ## Note: can also be set in firmware for modern chips
 set_fast_fuse: LFUSE = 0xE2
-set_fast_fuse: FUSE_STRING = -U lfuse:w:$(LFUSE):m 
+set_fast_fuse: FUSE_STRING = -U lfuse:w:$(LFUSE):m
 set_fast_fuse: fuses
 
 ## Set the EESAVE fuse byte to preserve EEPROM across flashes
